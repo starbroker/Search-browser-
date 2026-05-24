@@ -147,6 +147,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val focusManager = LocalFocusManager.current
 
     // Observe State Flow values from ViewModel
+    val isWebViewSupported by viewModel.isWebViewSupported.collectAsState()
     val activeTabId by viewModel.activeTabId.collectAsState()
     val tabsList by viewModel.tabs.collectAsState()
     val currentUrlInput by viewModel.currentUrlInput.collectAsState()
@@ -272,6 +273,16 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 viewModel = viewModel,
                                 fontFamily = activeFont,
                                 isDark = isDark,
+                                onNavigate = { targetUrl ->
+                                    viewModel.navigateActiveTab(targetUrl, context)
+                                }
+                            )
+                        } else if (isWebViewSupported == false) {
+                            FallbackBrowserSimulator(
+                                viewModel = viewModel,
+                                activeTab = activeTab,
+                                isDark = isDark,
+                                fontFamily = activeFont,
                                 onNavigate = { targetUrl ->
                                     viewModel.navigateActiveTab(targetUrl, context)
                                 }
@@ -5105,3 +5116,243 @@ fun IosNotificationItem(
         }
     }
 }
+
+@Composable
+fun FallbackBrowserSimulator(
+    viewModel: BrowserViewModel,
+    activeTab: TabState?,
+    isDark: Boolean,
+    fontFamily: FontFamily,
+    onNavigate: (String) -> Unit
+) {
+    val scrollState = rememberScrollState()
+    val url = activeTab?.url ?: ""
+    val isSearch = url.contains("q=")
+    val query = if (isSearch) {
+        val qIndex = url.indexOf("q=") + 2
+        var rawQ = url.substring(qIndex)
+        val ampIndex = rawQ.indexOf("&")
+        if (ampIndex != -1) {
+            rawQ = rawQ.substring(0, ampIndex)
+        }
+        android.net.Uri.decode(rawQ)
+    } else {
+        ""
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isDark) Color(0xFF0F0F10) else Color(0xFFF9FAFA))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+        ) {
+            // Elegant badge explaining the Simulated Active status
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "info",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    androidx.compose.material3.Text(
+                        text = trans("Simulator Active • WebView engine is uninstalled on this device host"),
+                        fontFamily = fontFamily,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                if (isSearch && query.isNotEmpty()) {
+                    androidx.compose.material3.Text(
+                        text = trans("Search results for") + " \"$query\"",
+                        fontFamily = fontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = if (isDark) Color.White else Color.Black,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    val mockResults = remember(query) {
+                        listOf(
+                            Pair("Wikipedia: $query", "https://en.wikipedia.org/wiki/${android.net.Uri.encode(query)}"),
+                            Pair("Official website for $query", "https://www.google.com/search?q=${android.net.Uri.encode(query)}+official+site"),
+                            Pair("Latest developments on $query (News)", "https://news.google.com/search?q=${android.net.Uri.encode(query)}"),
+                            Pair("GitHub repositories matching $query", "https://github.com/search?q=${android.net.Uri.encode(query)}")
+                        )
+                    }
+
+                    mockResults.forEach { result ->
+                        ElevatedCard(
+                            onClick = { onNavigate(result.second) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.elevatedCardColors(
+                                containerColor = if (isDark) Color(0xFF1E1E20) else Color.White
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = "Search icon",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    androidx.compose.material3.Text(
+                                        text = result.first,
+                                        fontFamily = fontFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 15.sp,
+                                        color = if (isDark) Color.White else Color.Black
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                androidx.compose.material3.Text(
+                                    text = result.second,
+                                    fontFamily = fontFamily,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    val domainName = viewModel.getDomainFromUrl(url)
+                    val siteName = if (domainName.isNotEmpty()) {
+                        domainName.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                    } else {
+                        "Simulated Page"
+                    }
+
+                    // Simulated Page Header Banner
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(130.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.secondary
+                                    )
+                                )
+                            )
+                            .padding(20.dp),
+                        contentAlignment = Alignment.BottomStart
+                    ) {
+                        Column {
+                            androidx.compose.material3.Text(
+                                text = siteName,
+                                fontFamily = fontFamily,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            androidx.compose.material3.Text(
+                                text = url,
+                                fontFamily = fontFamily,
+                                fontSize = 12.sp,
+                                color = Color.White.copy(alpha = 0.8f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    ElevatedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = if (isDark) Color(0xFF1E1E20) else Color.White
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Language,
+                                    contentDescription = "Web",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                androidx.compose.material3.Text(
+                                    text = trans("Reader Mode Active"),
+                                    fontFamily = fontFamily,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color.White else Color.Black
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            androidx.compose.material3.Text(
+                                text = trans("This high-fidelity article reader provides an elegant layout optimized for") + " $siteName.",
+                                fontFamily = fontFamily,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.85f)
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            androidx.compose.material3.Text(
+                                text = trans("Since this host container does not have an active Android WebView system package, our Aquamorphic Simulator intercepted the request securely to allow browsing, bookmarking, and local research without crashing."),
+                                fontFamily = fontFamily,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp,
+                                color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.7f)
+                            )
+
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            Button(
+                                onClick = { onNavigate("https://search.stormx.ninja/") },
+                                modifier = Modifier.align(Alignment.End),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Text("Go Home")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

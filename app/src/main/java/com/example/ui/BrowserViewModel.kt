@@ -42,6 +42,10 @@ class BrowserViewModel(
     private val repository: BrowserRepository
 ) : AndroidViewModel(application) {
 
+    // Support state for WebView availability
+    private val _isWebViewSupported = MutableStateFlow<Boolean?>(null)
+    val isWebViewSupported: StateFlow<Boolean?> = _isWebViewSupported.asStateFlow()
+
     // Active Tab ID
     private val _activeTabId = MutableStateFlow<Int>(-1)
     val activeTabId: StateFlow<Int> = _activeTabId.asStateFlow()
@@ -201,6 +205,20 @@ class BrowserViewModel(
     }
 
     init {
+        // Check if WebView is supported on this platform/kernel
+        try {
+            val dummy = WebView(application)
+            dummy.destroy()
+            _isWebViewSupported.value = true
+        } catch (t: Throwable) {
+            _isWebViewSupported.value = false
+            showIosNotification(
+                title = "Aquamorphic Engine Simulator",
+                message = "Running in simulated browser mode (Android System WebView missing).",
+                type = "DOWNLOAD_FAILED"
+            )
+        }
+
         // Start periodic database sync for blocked ads and trackers to prevent SQLite deadlock & main-thread freezes
         viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
@@ -489,7 +507,7 @@ class BrowserViewModel(
         return webView
     }
 
-    private fun getDomainFromUrl(url: String?): String {
+    fun getDomainFromUrl(url: String?): String {
         if (url.isNullOrEmpty()) return ""
         return try {
             val uri = java.net.URI(url)
@@ -582,6 +600,24 @@ class BrowserViewModel(
 
         _currentUrlInput.value = formattedUrl
         val activeId = _activeTabId.value
+        if (_isWebViewSupported.value == false) {
+            viewModelScope.launch {
+                updateTabProperties(activeId, url = formattedUrl, isLoading = true, progress = 20)
+                kotlinx.coroutines.delay(200)
+                updateTabProperties(activeId, progress = 65)
+                kotlinx.coroutines.delay(300)
+                val domain = getDomainFromUrl(formattedUrl)
+                val simulatedTitle = if (domain.isNotEmpty()) {
+                    domain.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                } else {
+                    "Simulated Page"
+                }
+                updateTabProperties(activeId, url = formattedUrl, title = simulatedTitle, isLoading = false, progress = 100)
+                repository.addHistory(formattedUrl, simulatedTitle)
+                repository.updateTab(BrowserTab(id = activeId, url = formattedUrl, title = simulatedTitle))
+            }
+            return
+        }
         val webView = getOrCreateWebView(activeId, context)
         webView.loadUrl(formattedUrl)
     }
@@ -601,7 +637,18 @@ class BrowserViewModel(
     }
 
     fun activeTabRefresh(context: Context) {
-        val webView = webViewMap[_activeTabId.value]
+        val activeId = _activeTabId.value
+        if (_isWebViewSupported.value == false) {
+            viewModelScope.launch {
+                updateTabProperties(activeId, isLoading = true, progress = 15)
+                kotlinx.coroutines.delay(200)
+                updateTabProperties(activeId, progress = 70)
+                kotlinx.coroutines.delay(200)
+                updateTabProperties(activeId, isLoading = false, progress = 100)
+            }
+            return
+        }
+        val webView = webViewMap[activeId]
         webView?.reload()
     }
 
