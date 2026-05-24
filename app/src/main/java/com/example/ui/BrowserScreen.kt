@@ -313,6 +313,11 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                             android.view.View(ctx)
                                         }
                                     },
+                                    onRelease = { view ->
+                                        try {
+                                            view.clearFocus()
+                                        } catch (e: Throwable) {}
+                                    },
                                     update = { /* Updates handled automatically */ },
                                     modifier = Modifier.fillMaxSize()
                                 )

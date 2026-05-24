@@ -387,16 +387,19 @@ class BrowserViewModel(
         val webView = webViewMap[tabId] ?: createWebViewInstance(tabId, context).also {
             webViewMap[tabId] = it
         }
-        // Force-remove from any stale parent before Compose attempts to re-attach this WebView instance
-        (webView.parent as? android.view.ViewGroup)?.removeView(webView)
+        // Safely force-remove from any stale parent before Compose attempts to re-attach
+        val parent = webView.parent as? android.view.ViewGroup
+        if (parent != null) {
+            try {
+                webView.clearFocus()
+                parent.removeView(webView)
+            } catch (e: Throwable) {}
+        }
         return webView
     }
 
     private fun createWebViewInstance(tabId: Int, context: Context): WebView {
         val webView = WebView(context).apply {
-            // Disable hardware acceleration to prevent native GPU rendering crashes on emulators/virtual servers
-            setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
-
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
