@@ -179,7 +179,7 @@ abstract class BrowserDatabase : RoomDatabase() {
                     BrowserDatabase::class.java,
                     "stormx_browser_db"
                 )
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(true)
                 .build()
                 INSTANCE = instance
                 instance

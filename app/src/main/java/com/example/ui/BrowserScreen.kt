@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.example.ui
  
 import androidx.compose.foundation.isSystemInDarkTheme
