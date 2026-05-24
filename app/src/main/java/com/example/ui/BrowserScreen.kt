@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -158,6 +159,8 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val downloadsList by viewModel.downloads.collectAsState()
     val iosNotifications by viewModel.iosNotifications.collectAsState()
 
+    var isSearchFocused by remember { mutableStateOf(false) }
+
     var lastActiveDownloadId by remember { mutableStateOf<Int?>(null) }
     var recentlyCompletedDownload by remember { mutableStateOf<DownloadItem?>(null) }
     var showCompletedBubble by remember { mutableStateOf(false) }
@@ -233,11 +236,31 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     density = currentDensity,
                     fontFamily = activeFont,
                     settings = settings,
+                    isFocused = isSearchFocused,
+                    onFocusChange = { isSearchFocused = it },
                     onUrlChange = { viewModel.setUrlInput(it) },
                     onNavigate = { viewModel.navigateActiveTab(currentUrlInput, context); focusManager.clearFocus() },
                     onRefresh = { viewModel.activeTabRefresh(context) },
                     viewModel = viewModel
                 )
+
+                // ColorOS 16 Dropdown
+                AnimatedVisibility(
+                    visible = isSearchFocused && currentUrlInput.isNotEmpty() && !currentUrlInput.startsWith("http"),
+                    enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+                    exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
+                ) {
+                    ColorOSSearchSuggestionsOverlay(
+                        query = currentUrlInput,
+                        isDark = isDark,
+                        fontFamily = activeFont,
+                        onSuggestionClick = { suggestion ->
+                            viewModel.setUrlInput(suggestion)
+                            viewModel.navigateActiveTab(suggestion, context)
+                            focusManager.clearFocus()
+                        }
+                    )
+                }
 
                 // Dynamic Progress Bar Indicator (Aquamorphic Fluid Design Accent)
                 AnimatedVisibility(
@@ -527,6 +550,8 @@ fun BrowserHeader(
     density: LayoutDensity,
     fontFamily: FontFamily,
     settings: BrowserSettings,
+    isFocused: Boolean = false,
+    onFocusChange: (Boolean) -> Unit = {},
     onUrlChange: (String) -> Unit,
     onNavigate: () -> Unit,
     onRefresh: () -> Unit,
@@ -625,6 +650,7 @@ fun BrowserHeader(
                         onValueChange = onUrlChange,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .onFocusChanged { onFocusChange(it.isFocused) }
                             .testTag("url_input_field"),
                         textStyle = LocalTextStyle.current.copy(
                             color = if (isDark) Color.White else Color(0xFF1C1C1E),
@@ -5364,3 +5390,63 @@ fun FallbackBrowserSimulator(
     }
 }
 
+@Composable
+fun ColorOSSearchSuggestionsOverlay(
+    query: String,
+    isDark: Boolean,
+    fontFamily: FontFamily,
+    onSuggestionClick: (String) -> Unit
+) {
+    if (query.isEmpty()) return
+
+    val suggestions = remember(query) {
+        listOf(
+            query,
+            "$query app",
+            "$query download",
+            "$query login",
+            "about $query"
+        )
+    }
+
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = glassCardColor(isDark)
+        ),
+        elevation = CardDefaults.elevatedCardElevation(
+            defaultElevation = 8.dp
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
+            suggestions.forEach { suggestion ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSuggestionClick(suggestion) }
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        tint = if (isDark) Color.White.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.5f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = suggestion,
+                        fontFamily = fontFamily,
+                        fontSize = 16.sp,
+                        color = if (isDark) Color.White else Color.Black
+                    )
+                }
+            }
+        }
+    }
+}
