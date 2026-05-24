@@ -47,6 +47,75 @@ class BrowserViewModel(
     private val _isWebViewSupported = MutableStateFlow<Boolean?>(null)
     val isWebViewSupported: StateFlow<Boolean?> = _isWebViewSupported.asStateFlow()
 
+    private val prefs = getApplication<Application>().getSharedPreferences("browser_prefs", Context.MODE_PRIVATE)
+
+    private val _forceSimulatedMode = MutableStateFlow<Boolean>(false)
+    val forceSimulatedMode: StateFlow<Boolean> = _forceSimulatedMode.asStateFlow()
+
+    private fun isEmulator(): Boolean {
+        val finger = android.os.Build.FINGERPRINT.lowercase()
+        val model = android.os.Build.MODEL.lowercase()
+        val brand = android.os.Build.BRAND.lowercase()
+        val device = android.os.Build.DEVICE.lowercase()
+        val product = android.os.Build.PRODUCT.lowercase()
+        val hardware = android.os.Build.HARDWARE.lowercase()
+        val board = android.os.Build.BOARD.lowercase()
+        val manufacturer = android.os.Build.MANUFACTURER.lowercase()
+        
+        return finger.startsWith("generic") ||
+                finger.startsWith("unknown") ||
+                finger.contains("test-keys") ||
+                model.contains("google_sdk") ||
+                model.contains("emulator") ||
+                model.contains("android sdk") ||
+                model.contains("virtual") ||
+                model.contains("gphone") ||
+                model.contains("sdk") ||
+                brand.startsWith("generic") ||
+                brand.startsWith("unknown") ||
+                device.startsWith("generic") ||
+                device.contains("vsoc") ||
+                device.contains("emulator") ||
+                device.contains("vbox") ||
+                device.contains("cutf") ||
+                device.contains("cuttlefish") ||
+                product.contains("google_sdk") ||
+                product.contains("sdk_gphone") ||
+                product.contains("redroid") ||
+                product.contains("emulator") ||
+                product.contains("virtual") ||
+                product.contains("aosp") ||
+                hardware.contains("goldfish") ||
+                hardware.contains("ranchu") ||
+                hardware.contains("vbox") ||
+                hardware.contains("cutf") ||
+                hardware.contains("cuttlefish") ||
+                hardware.contains("noflinger") ||
+                hardware.contains("virtio") ||
+                hardware.contains("pc") ||
+                board.contains("vbox") ||
+                board.contains("goldfish") ||
+                board.contains("ranchu") ||
+                manufacturer.contains("genymotion") ||
+                manufacturer.contains("google") && (model.startsWith("sdk") || model.contains("gphone"))
+    }
+
+    fun setForceSimulatedMode(enabled: Boolean) {
+        _forceSimulatedMode.value = enabled
+        prefs.edit().putBoolean("force_simulated_mode", enabled).apply()
+        if (enabled) {
+            _isWebViewSupported.value = false
+        } else {
+            try {
+                val dummy = WebView(getApplication())
+                dummy.destroy()
+                _isWebViewSupported.value = true
+            } catch (t: Throwable) {
+                _isWebViewSupported.value = false
+            }
+        }
+    }
+
     // Active Tab ID
     private val _activeTabId = MutableStateFlow<Int>(-1)
     val activeTabId: StateFlow<Int> = _activeTabId.asStateFlow()
@@ -206,18 +275,25 @@ class BrowserViewModel(
     }
 
     init {
-        // Check if WebView is supported on this platform/kernel
-        try {
-            val dummy = WebView(application)
-            dummy.destroy()
-            _isWebViewSupported.value = true
-        } catch (t: Throwable) {
+        val startSimulated = prefs.getBoolean("force_simulated_mode", false)
+        _forceSimulatedMode.value = startSimulated
+
+        if (startSimulated) {
             _isWebViewSupported.value = false
-            showIosNotification(
-                title = "Aquamorphic Engine Simulator",
-                message = "Running in simulated browser mode (Android System WebView missing).",
-                type = "DOWNLOAD_FAILED"
-            )
+        } else {
+            // Safe try-catch check to prevent crashing on launch if WebView system packages are missing
+            try {
+                val dummy = WebView(application)
+                dummy.destroy()
+                _isWebViewSupported.value = true
+            } catch (t: Throwable) {
+                _isWebViewSupported.value = false
+                showIosNotification(
+                    title = "Aquamorphic Engine Simulator",
+                    message = "Running in simulated browser mode (Android System WebView missing).",
+                    type = "DOWNLOAD_FAILED"
+                )
+            }
         }
 
         // Start periodic database sync for blocked ads and trackers to prevent SQLite deadlock & main-thread freezes
@@ -334,6 +410,9 @@ class BrowserViewModel(
 
     private fun createWebViewInstance(tabId: Int, context: Context): WebView {
         val webView = WebView(context).apply {
+            // Disable hardware acceleration to prevent native GPU rendering crashes on emulators/virtual servers
+            setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
+
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT

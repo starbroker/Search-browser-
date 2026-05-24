@@ -292,16 +292,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                         )
                 ) {
                     if (activeTabId != -1) {
-                        if (isHomepageUrl(activeTab?.url)) {
-                            SpeedDialUI(
-                                viewModel = viewModel,
-                                fontFamily = activeFont,
-                                isDark = isDark,
-                                onNavigate = { targetUrl ->
-                                    viewModel.navigateActiveTab(targetUrl, context)
-                                }
-                            )
-                        } else if (isWebViewSupported == false) {
+                        if (isWebViewSupported == false) {
                             FallbackBrowserSimulator(
                                 viewModel = viewModel,
                                 activeTab = activeTab,
@@ -2478,6 +2469,56 @@ fun SettingsSheet(
                                     )
                                 )
                             }
+
+                            HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
+
+                            // Engine Mode toggle
+                            val forceSimulatedMode by viewModel.forceSimulatedMode.collectAsState()
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.setForceSimulatedMode(!forceSimulatedMode) }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(Color(0xFFFF9500).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = "Engine Mode Icon",
+                                        tint = Color(0xFFFF9500),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Aquamorphic Light Engine",
+                                        fontFamily = activeFont,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 16.sp,
+                                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                    )
+                                    Text(
+                                        text = if (forceSimulatedMode) "Simulated Browser (Crash-safe mode active)" else "Native WebView Engine",
+                                        fontFamily = activeFont,
+                                        fontSize = 12.sp,
+                                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                                    )
+                                }
+                                Switch(
+                                    checked = forceSimulatedMode,
+                                    onCheckedChange = { viewModel.setForceSimulatedMode(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFFFF9500)
+                                    )
+                                )
+                            }
                         }
                     }
                 }
@@ -4603,7 +4644,15 @@ fun getWebsiteThemedColor(url: String?): Color {
 
 // Helpers for ColorOS 16 Adaptive Interceptor layout
 fun isHomepageUrl(url: String?): Boolean {
-    return false
+    if (url == null) return true
+    val trimmed = url.trim().lowercase()
+    return trimmed.isEmpty() ||
+           trimmed == "homepage" ||
+           trimmed == "about:blank" ||
+           trimmed == "https://search.stormx.ninja" ||
+           trimmed == "https://search.stormx.ninja/" ||
+           trimmed == "http://search.stormx.ninja" ||
+           trimmed == "http://search.stormx.ninja/"
 }
 
 @Composable
@@ -4673,29 +4722,36 @@ fun SpeedDialUI(
     onNavigate: (String) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val currentSettings by viewModel.settings.collectAsState()
+    val activeSearchEngine = currentSettings.searchEngine
+    
+    var searchQuery by remember { mutableStateOf("") }
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Top
     ) {
-        // Logo Container
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Logo Container with Search Engine Website theme flavor
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(bottom = 32.dp)
+            modifier = Modifier.padding(bottom = 12.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Public,
                 contentDescription = "Browser Logo",
                 tint = Color(0xFFFF1B2D),
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(40.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "Browser",
+                text = "Storm Browser",
                 fontFamily = fontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 32.sp,
@@ -4703,8 +4759,117 @@ fun SpeedDialUI(
             )
         }
 
+        // Subtitle highlighting active secure engine
+        Text(
+            text = trans("Security-enhanced search powered by $activeSearchEngine"),
+            fontFamily = fontFamily,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (isDark) Color.White.copy(alpha = 0.6f) else Color(0xFF6E6E73),
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+
+        // Central Elegant Search Engine Bar on the Homepage (Direct Answer to Request)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp, start = 8.dp, end = 8.dp)
+                .height(56.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(if (isDark) Color(0x33FFFFFF) else Color(0x0F000000))
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) Color(0x1AFFFFFF) else Color(0x1A000000),
+                    shape = RoundedCornerShape(28.dp)
+                )
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = "Search active engine",
+                tint = if (isDark) Color.White.copy(alpha = 0.6f) else Color(0xFF6E6E73),
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Box(modifier = Modifier.weight(1f)) {
+                if (searchQuery.isEmpty()) {
+                    Text(
+                        text = trans("Search with $activeSearchEngine or enter address"),
+                        fontFamily = fontFamily,
+                        fontSize = 14.sp,
+                        color = if (isDark) Color.White.copy(alpha = 0.4f) else Color(0xFF6E6E73)
+                    )
+                }
+                androidx.compose.foundation.text.BasicTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("homepage_search_input"),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                        fontFamily = fontFamily,
+                        fontSize = 14.sp
+                    ),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Search
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            if (searchQuery.isNotBlank()) {
+                                onNavigate(searchQuery)
+                            }
+                        }
+                    )
+                )
+            }
+            if (searchQuery.isNotEmpty()) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Clear search",
+                    tint = if (isDark) Color.White.copy(alpha = 0.6f) else Color(0xFF6E6E73),
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable { searchQuery = "" }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowRight,
+                    contentDescription = "Execute Search",
+                    tint = Color(0xFFFF1B2D),
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable { onNavigate(searchQuery) }
+                )
+            }
+        }
+
+        // Section Title: Speed Dial / Top Sites
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp, start = 8.dp),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            Text(
+                text = trans("Active Engines & Top Sites"),
+                fontFamily = fontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+            )
+        }
+
+        // Expanded list of premium search engine websites + directory links
         val primaryWebsites = listOf(
-            DialItemData("StormX", "https://search.stormx.ninja", Color(0xFFFF1B2D), Icons.Default.Search)
+            DialItemData("StormX", "https://search.stormx.ninja", Color(0xFFFF1B2D), Icons.Default.Search),
+            DialItemData("Google", "https://www.google.com", Color(0xFF4285F4), Icons.Default.Search),
+            DialItemData("DuckDuckGo", "https://duckduckgo.com", Color(0xFFDE5833), Icons.Default.Search),
+            DialItemData("Bing", "https://www.bing.com", Color(0xFF0083B0), Icons.Default.Search),
+            DialItemData("Yahoo", "https://search.yahoo.com", Color(0xFF6001D2), Icons.Default.Search),
+            DialItemData("Wikipedia", "https://wikipedia.org", if (isDark) Color(0xFFE6E6E6) else Color(0xFF1C1C1E), Icons.Default.Public)
         )
 
         // Fixed 2 x 4 layout (exactly 4 columns)
