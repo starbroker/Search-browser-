@@ -304,21 +304,32 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             )
                         } else if (isWebViewSupported == true) {
                             key(activeTabId) {
-                                AndroidView<android.view.View>(
+                                AndroidView<android.widget.FrameLayout>(
                                     factory = { ctx ->
+                                        val container = android.widget.FrameLayout(ctx)
                                         try {
-                                            viewModel.getOrCreateWebView(activeTabId, ctx)
+                                            val webView = viewModel.getOrCreateWebView(activeTabId, ctx)
+                                            container.addView(webView)
                                         } catch (e: Throwable) {
                                             viewModel.markWebViewUnsupported()
-                                            android.view.View(ctx)
                                         }
+                                        container
                                     },
-                                    onRelease = { view ->
+                                    onRelease = { container ->
                                         try {
-                                            view.clearFocus()
+                                            container.removeAllViews()
                                         } catch (e: Throwable) {}
                                     },
-                                    update = { /* Updates handled automatically */ },
+                                    update = { container ->
+                                        try {
+                                            if (container.childCount == 0) {
+                                                val webView = viewModel.getOrCreateWebView(activeTabId, container.context)
+                                                container.addView(webView)
+                                            }
+                                        } catch (e: Throwable) {
+                                            viewModel.markWebViewUnsupported()
+                                        }
+                                    },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
