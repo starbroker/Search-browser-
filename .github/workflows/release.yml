@@ -59,7 +59,7 @@ jobs:
             exit 1
           fi
 
-      - name: Check and Build Signed Release APK
+      - name: Build Release APK (Signed or Unsigned)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
@@ -70,23 +70,32 @@ jobs:
             echo "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
             export KEYSTORE_PATH="$(pwd)/my-upload-key.jks"
             ./gradlew assembleRelease --stacktrace
-            
-            RELEASE_APK_PATH="app/build/outputs/apk/release/app-release.apk"
-            if [ -f "$RELEASE_APK_PATH" ]; then
-              if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-                VERSION="${{ github.ref_name }}"
-              else
-                VERSION="dev"
-              fi
-              cp "$RELEASE_APK_PATH" "build-artifacts/Search-${VERSION}-release.apk"
-              echo "Release APK prepared at build-artifacts/Search-${VERSION}-release.apk"
-            else
-              echo "Error: Release APK built but not found at $RELEASE_APK_PATH"
-              exit 1
-            fi
           else
-            echo "Signing secrets not fully configured. Skipping signed Release APK build."
+            echo "Signing secrets not fully configured. Building unsigned Release APK."
+            ./gradlew assembleRelease --stacktrace
           fi
+          
+          # Handle output path differences between signed and unsigned builds
+          SIGNED_APK="app/build/outputs/apk/release/app-release.apk"
+          UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          
+          if [ -f "$SIGNED_APK" ]; then
+            RELEASE_APK_PATH="$SIGNED_APK"
+          elif [ -f "$UNSIGNED_APK" ]; then
+            RELEASE_APK_PATH="$UNSIGNED_APK"
+          else
+            echo "Error: Release APK built but not found at expected paths"
+            exit 1
+          fi
+          
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="dev"
+          fi
+          
+          cp "$RELEASE_APK_PATH" "build-artifacts/Search-${VERSION}-release.apk"
+          echo "Release APK prepared at build-artifacts/Search-${VERSION}-release.apk"
 
       - name: Upload APKs as Run Artifacts
         uses: actions/upload-artifact@v4
