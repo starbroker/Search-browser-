@@ -287,16 +287,24 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                     viewModel.navigateActiveTab(targetUrl, context)
                                 }
                             )
-                        } else {
+                        } else if (isWebViewSupported == true) {
                             key(activeTabId) {
-                                AndroidView(
+                                AndroidView<android.view.View>(
                                     factory = { ctx ->
-                                        viewModel.getOrCreateWebView(activeTabId, ctx)
+                                        try {
+                                            viewModel.getOrCreateWebView(activeTabId, ctx)
+                                        } catch (e: Throwable) {
+                                            viewModel.markWebViewUnsupported()
+                                            android.view.View(ctx)
+                                        }
                                     },
-                                    update = { /* Updates handled automatically via activeTabId key swapping */ },
+                                    update = { /* Updates handled automatically */ },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
+                        } else {
+                            // Loading or intermediate state while webview support is checked
+                            Box(modifier = Modifier.fillMaxSize())
                         }
                     } else {
                         Box(modifier = Modifier.fillMaxSize())

@@ -312,6 +312,15 @@ class BrowserViewModel(
         }
     }
 
+    fun markWebViewUnsupported() {
+        _isWebViewSupported.value = false
+        showIosNotification(
+            title = "Aquamorphic Engine Simulator",
+            message = "Fell back to simulated mode due to native graphics exception.",
+            type = "DOWNLOAD_FAILED"
+        )
+    }
+
     // Get or Create dynamic WebView for stable multi-tab navigation
     fun getOrCreateWebView(tabId: Int, context: Context): WebView {
         val webView = webViewMap[tabId] ?: createWebViewInstance(tabId, context).also {
@@ -618,22 +627,30 @@ class BrowserViewModel(
             }
             return
         }
-        val webView = getOrCreateWebView(activeId, context)
-        webView.loadUrl(formattedUrl)
+        try {
+            val webView = getOrCreateWebView(activeId, context)
+            webView.loadUrl(formattedUrl)
+        } catch (e: Throwable) {
+            markWebViewUnsupported()
+        }
     }
 
     fun activeTabGoBack(context: Context) {
-        val webView = webViewMap[_activeTabId.value]
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack()
-        }
+        try {
+            val webView = webViewMap[_activeTabId.value]
+            if (webView != null && webView.canGoBack()) {
+                webView.goBack()
+            }
+        } catch (e: Throwable) {}
     }
 
     fun activeTabGoForward(context: Context) {
-        val webView = webViewMap[_activeTabId.value]
-        if (webView != null && webView.canGoForward()) {
-            webView.goForward()
-        }
+        try {
+            val webView = webViewMap[_activeTabId.value]
+            if (webView != null && webView.canGoForward()) {
+                webView.goForward()
+            }
+        } catch (e: Throwable) {}
     }
 
     fun activeTabRefresh(context: Context) {
@@ -648,8 +665,10 @@ class BrowserViewModel(
             }
             return
         }
-        val webView = webViewMap[activeId]
-        webView?.reload()
+        try {
+            val webView = webViewMap[activeId]
+            webView?.reload()
+        } catch (e: Throwable) {}
     }
 
     fun setUrlInput(input: String) {
