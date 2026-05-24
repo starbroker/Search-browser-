@@ -1,6 +1,6 @@
 {
-  "name": "Opera ColorOS",
-  "description": "Fluid, highly private web browser featuring an integrated adblocker, tracking protection, persistent customizable navigation, down-loader, tab management, and visual adjustments.",
+  "name": "search",
+  "description": "Premium minimalist web browser featuring lightning-fast secure lookup integrated with Search (https://search.stormx.ninja/).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -6,6 +6,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -51,6 +52,55 @@ import com.example.data.BrowserSettings
 import com.example.data.DownloadItem
 import com.example.data.HistoryItem
 import kotlinx.coroutines.launch
+
+val LocalAppLanguage = androidx.compose.runtime.staticCompositionLocalOf { "English (US)" }
+
+@Composable
+fun trans(text: String): String {
+    val lang = LocalAppLanguage.current
+    return BrowserTranslator.translateText(text, lang)
+}
+
+@Composable
+fun Text(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    fontStyle: androidx.compose.ui.text.font.FontStyle? = null,
+    fontWeight: androidx.compose.ui.text.font.FontWeight? = null,
+    fontFamily: androidx.compose.ui.text.font.FontFamily? = null,
+    letterSpacing: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    textDecoration: androidx.compose.ui.text.style.TextDecoration? = null,
+    textAlign: androidx.compose.ui.text.style.TextAlign? = null,
+    lineHeight: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    overflow: androidx.compose.ui.text.style.TextOverflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+    softWrap: Boolean = true,
+    maxLines: Int = Int.MAX_VALUE,
+    minLines: Int = 1,
+    onTextLayout: ((androidx.compose.ui.text.TextLayoutResult) -> Unit)? = null,
+    style: androidx.compose.ui.text.TextStyle = androidx.compose.material3.LocalTextStyle.current
+) {
+    androidx.compose.material3.Text(
+        text = trans(text),
+        modifier = modifier,
+        color = color,
+        fontSize = fontSize,
+        fontStyle = fontStyle,
+        fontWeight = fontWeight,
+        fontFamily = fontFamily,
+        letterSpacing = letterSpacing,
+        textDecoration = textDecoration,
+        textAlign = textAlign,
+        lineHeight = lineHeight,
+        overflow = overflow,
+        softWrap = softWrap,
+        maxLines = maxLines,
+        minLines = minLines,
+        onTextLayout = onTextLayout,
+        style = style
+    )
+}
 
 // Layout Density Model Configuration to support customization
 enum class LayoutDensity(
@@ -105,6 +155,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val adsBlockedSession by viewModel.blockedAdsSession.collectAsState()
     val trackersBlockedSession by viewModel.blockedTrackersSession.collectAsState()
     val downloadsList by viewModel.downloads.collectAsState()
+    val iosNotifications by viewModel.iosNotifications.collectAsState()
 
     var lastActiveDownloadId by remember { mutableStateOf<Int?>(null) }
     var recentlyCompletedDownload by remember { mutableStateOf<DownloadItem?>(null) }
@@ -157,10 +208,11 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
         else -> isSystemDark
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = Color.Transparent
-    ) { innerPadding ->
+    CompositionLocalProvider(LocalAppLanguage provides settings.language) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent
+        ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -333,6 +385,16 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 )
             }
 
+            val showMenuDrawer by viewModel.showMenuDrawer.collectAsState()
+            if (showMenuDrawer) {
+                MenuDrawerSheet(
+                    viewModel = viewModel,
+                    settings = settings,
+                    activeFont = activeFont,
+                    onDismiss = { viewModel.showMenuDrawer.value = false }
+                )
+            }
+
             if (showShield) {
                 ShieldDashboardSheet(
                     viewModel = viewModel,
@@ -424,8 +486,18 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 isDark = isDark,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
+
+            if (iosNotifications.isNotEmpty()) {
+                IosNotificationHUD(
+                    notifications = iosNotifications,
+                    onDismiss = { viewModel.dismissIosNotification(it) },
+                    activeFont = activeFont,
+                    isDark = isDark
+                )
+            }
         }
     }
+}
 }
 
 // Capsule address and Shield Control header bar
@@ -450,14 +522,10 @@ fun BrowserHeader(
     Surface(
         color = glassCardColor(isDark),
         tonalElevation = 6.dp,
+        shadowElevation = 0.dp,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 4.dp)
-            .shadow(
-                elevation = 12.dp,
-                shape = RoundedCornerShape(24.dp),
-                clip = false
-            )
             .border(
                 width = 1.dp,
                 color = glassBorderColor(isDark),
@@ -603,18 +671,14 @@ fun PersistentNavigationBar(
     Surface(
         color = glassCardColor(isDark),
         tonalElevation = 6.dp,
-        shape = RoundedCornerShape(28.dp),
+        shadowElevation = 0.dp,
+        shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 8.dp)
-            .shadow(
-                elevation = 12.dp,
-                shape = RoundedCornerShape(28.dp),
-                clip = false
-            )
             .border(
                 width = 1.dp,
                 color = glassBorderColor(isDark),
-                shape = RoundedCornerShape(28.dp)
+                shape = RoundedCornerShape(24.dp)
             )
     ) {
         Row(
@@ -722,7 +786,7 @@ fun PersistentNavigationBar(
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
-                    .clickable { viewModel.showSettings.value = true }
+                    .clickable { viewModel.showMenuDrawer.value = true }
                     .padding(8.dp)
                     .testTag("settings_button"),
                 contentAlignment = Alignment.Center
@@ -739,6 +803,249 @@ fun PersistentNavigationBar(
 }
 
 
+
+// BOTTOM APP DRAWER & OVERLAY MATCHING COLOROS PROTOTYPE
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MenuDrawerSheet(
+    viewModel: BrowserViewModel,
+    settings: BrowserSettings,
+    activeFont: FontFamily,
+    onDismiss: () -> Unit
+) {
+    val isDark = when (settings.themeMode) {
+        "LIGHT" -> false
+        "DARK" -> true
+        else -> isSystemInDarkTheme()
+    }
+    val solidColor = if (isDark) Color(0xD91E1E23) else Color(0xD9FAFAFA)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+        containerColor = solidColor,
+        tonalElevation = 10.dp,
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(
+                color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.2f)
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, bottom = 40.dp, top = 8.dp)
+        ) {
+            // Header: Menu & Close button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Menu",
+                    fontFamily = activeFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp,
+                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                )
+
+                // Close Button
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f))
+                        .clickable { onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close Menu",
+                        tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // Grid Layout for Buttons - 2 Columns using Column + Row
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // First Row: Bookmarks & History
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    MenuDrawerItem(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Default.Bookmark,
+                        iconTint = Color(0xFF0066FF),
+                        label = "Bookmarks",
+                        activeFont = activeFont,
+                        isDark = isDark,
+                        onClick = {
+                            viewModel.showBookmarks.value = true
+                            onDismiss()
+                        }
+                    )
+                    MenuDrawerItem(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Default.History,
+                        iconTint = Color(0xFF0066FF),
+                        label = "History",
+                        activeFont = activeFont,
+                        isDark = isDark,
+                        onClick = {
+                            viewModel.showHistory.value = true
+                            onDismiss()
+                        }
+                    )
+                }
+
+                // Second Row: Downloads & Theme Mode
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    MenuDrawerItem(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Default.Download,
+                        iconTint = Color(0xFF34C759),
+                        label = "Downloads",
+                        activeFont = activeFont,
+                        isDark = isDark,
+                        onClick = {
+                            viewModel.showDownloads.value = true
+                            onDismiss()
+                        }
+                    )
+                    MenuDrawerItem(
+                        modifier = Modifier.weight(1f),
+                        icon = if (isDark) Icons.Default.WbSunny else Icons.Default.NightsStay,
+                        iconTint = Color(0xFF0066FF),
+                        label = if (isDark) "Light Mode" else "Dark Mode",
+                        activeFont = activeFont,
+                        isDark = isDark,
+                        onClick = {
+                            viewModel.updateThemeMode(if (isDark) "LIGHT" else "DARK")
+                        }
+                    )
+                }
+
+                // Third Row spanning across (grid-column: span 2)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f))
+                        .border(
+                            1.dp,
+                            if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f),
+                            RoundedCornerShape(20.dp)
+                        )
+                        .clickable {
+                            viewModel.showSettings.value = true
+                            onDismiss()
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(
+                                    color = if (isDark) Color(0xFF0066FF).copy(alpha = 0.15f) else Color(0xFF0066FF).copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Browser Settings",
+                                tint = Color(0xFF0066FF),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "Browser Settings",
+                            fontFamily = activeFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MenuDrawerItem(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    iconTint: Color,
+    label: String,
+    activeFont: FontFamily,
+    isDark: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f))
+            .border(
+                1.dp,
+                if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f),
+                RoundedCornerShape(20.dp)
+            )
+            .clickable { onClick() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        color = if (isDark) iconTint.copy(alpha = 0.15f) else iconTint.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Text(
+                text = label,
+                fontFamily = activeFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+            )
+        }
+    }
+}
+
+
 // Sheet 1: Interactive Privacy Shield Dashboard
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -749,6 +1056,26 @@ fun ShieldDashboardSheet(
     sessionAds: Int,
     sessionTrackers: Int
 ) {
+    val listTabs by viewModel.tabs.collectAsState()
+    val activId by viewModel.activeTabId.collectAsState()
+    val permissionsList by viewModel.websitePermissions.collectAsState()
+    
+    val currentActiveTab = listTabs.find { it.id == activId }
+    val currentDomain = currentActiveTab?.url?.let { urlStr ->
+        try {
+            val uri = java.net.URI(urlStr)
+            var host = uri.host ?: ""
+            if (host.startsWith("www.")) {
+                host = host.substring(4)
+            }
+            host.ifEmpty { "this website" }
+        } catch (e: Exception) {
+            "this website"
+        }
+    } ?: "this website"
+    
+    val notificationsAllowed = permissionsList.any { it.domain == currentDomain && it.notificationsAllowed }
+
     val totalAds = settings.totalAdsBlocked
     val totalTrackers = settings.totalTrackersBlocked
     val isDark = when (settings.themeMode) {
@@ -953,6 +1280,203 @@ fun ShieldDashboardSheet(
                         )
                     )
                 }
+
+                // Website Permissions Section
+                val activePerm = permissionsList.find { it.domain == currentDomain } ?: com.example.data.WebsitePermission(domain = currentDomain, notificationsAllowed = false, locationAllowed = false, cameraAllowed = false, microphoneAllowed = false)
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Site Permissions",
+                    fontFamily = activeFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f),
+                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                )
+
+                // Website Notifications Permission Toggle Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
+                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
+                        .clickable { viewModel.toggleWebsiteNotification(currentDomain, !activePerm.notificationsAllowed) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Website Notifications",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Allow Website Notifications", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            text = if (activePerm.notificationsAllowed) "Allowed for $currentDomain" else "Receive instant updates from $currentDomain",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Switch(
+                        checked = activePerm.notificationsAllowed,
+                        onCheckedChange = { viewModel.toggleWebsiteNotification(currentDomain, !activePerm.notificationsAllowed) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+
+                // Website Location Access Row
+                Row(
+                     modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
+                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
+                        .clickable { viewModel.toggleWebsiteLocation(currentDomain, !activePerm.locationAllowed) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = "Website Location",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Allow Location Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            text = if (activePerm.locationAllowed) "Location permission active" else "Allow site to ask for location",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Switch(
+                        checked = activePerm.locationAllowed,
+                        onCheckedChange = { viewModel.toggleWebsiteLocation(currentDomain, !activePerm.locationAllowed) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+
+                // Website Camera Access Row
+                Row(
+                     modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
+                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
+                        .clickable { viewModel.toggleWebsiteCamera(currentDomain, !activePerm.cameraAllowed) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = "Website Camera",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Allow Camera Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            text = if (activePerm.cameraAllowed) "Camera permission active" else "Allow site to ask for camera",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Switch(
+                        checked = activePerm.cameraAllowed,
+                        onCheckedChange = { viewModel.toggleWebsiteCamera(currentDomain, !activePerm.cameraAllowed) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+
+                // Website Microphone Access Row
+                Row(
+                     modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
+                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
+                        .clickable { viewModel.toggleWebsiteMicrophone(currentDomain, !activePerm.microphoneAllowed) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "Website Microphone",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Allow Microphone Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            text = if (activePerm.microphoneAllowed) "Microphone permission active" else "Allow site to ask for microphone",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Switch(
+                        checked = activePerm.microphoneAllowed,
+                        onCheckedChange = { viewModel.toggleWebsiteMicrophone(currentDomain, !activePerm.microphoneAllowed) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -1046,13 +1570,6 @@ fun TabsOverviewPage(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "Mic Icon",
-                        tint = if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73),
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
             }
 
@@ -1276,12 +1793,12 @@ fun TabsOverviewPage(
             ) {
                 Surface(
                     color = glassCardColor(isDark),
-                    shape = RoundedCornerShape(34.dp),
+                    shape = RoundedCornerShape(28.dp),
                     tonalElevation = 6.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(68.dp)
-                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(34.dp))
+                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
                 ) {
                     Row(
                         modifier = Modifier
@@ -1348,7 +1865,7 @@ fun TabsOverviewPage(
                             }
                         }
                         IconButton(onClick = {
-                            viewModel.showSettings.value = true
+                            viewModel.showMenuDrawer.value = true
                             onDismiss()
                         }) {
                             Icon(
@@ -1382,6 +1899,32 @@ fun SettingsSheet(
     }
     val context = LocalContext.current
     val tabsList by viewModel.tabs.collectAsState()
+    val webPerms by viewModel.websitePermissions.collectAsState()
+
+    var showAppearancePage by remember { mutableStateOf(false) }
+    var settingsSearchQuery by remember { mutableStateOf("") }
+
+    val query = settingsSearchQuery.trim().lowercase()
+
+    val showGeneralGroup = query.isEmpty() || 
+        "search engine".contains(query) || "google".contains(query) || "bing".contains(query) || "yahoo".contains(query) || "duckduckgo".contains(query) || "stormx".contains(query) ||
+        "languages".contains(query) || "english".contains(query) || "chinese".contains(query) || "spanish".contains(query) || "german".contains(query) || "french".contains(query)
+
+    val showCustomizationGroup = query.isEmpty() ||
+        "appearance".contains(query) || "typography".contains(query) || "font".contains(query) || "spacing".contains(query) || "theme".contains(query) || "accent".contains(query) || "customization".contains(query) ||
+        "fluid animations".contains(query) || "motion".contains(query) || "coloros".contains(query) || "animation".contains(query)
+
+    val showSecurityGroup = query.isEmpty() ||
+        "ad shield block".contains(query) || "ad".contains(query) || "shield".contains(query) || "tracker shield block".contains(query) || "tracker".contains(query) || "security".contains(query) || "protect".contains(query) || "block".contains(query)
+
+    val showNotificationGroup = webPerms.isNotEmpty() && (query.isEmpty() ||
+        "notifications".contains(query) || "website permissions".contains(query) || "allowed notifications".contains(query) ||
+        webPerms.any { it.domain.lowercase().contains(query) })
+
+    val showDataGroup = query.isEmpty() ||
+        "clear browsing statistics".contains(query) || "clear statistics".contains(query) || "erase history".contains(query) || "delete data".contains(query) || "clear browsing".contains(query) || "reset".contains(query)
+
+    val noSettingsFound = !showGeneralGroup && !showCustomizationGroup && !showSecurityGroup && !showNotificationGroup && !showDataGroup
 
     // Local wallpaper picker carousel (simulating dynamic glass wall backdrops)
     var wallpaperIndex by remember { mutableStateOf(0) }
@@ -1401,54 +1944,84 @@ fun SettingsSheet(
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-            // 1. Sleek Search Header (Top-bar)
-            Surface(
-                color = glassCardColor(isDark),
-                shape = RoundedCornerShape(28.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .height(56.dp)
-                    .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
-            ) {
-                Row(
+            if (showAppearancePage) {
+                AppearanceSubPage(
+                    viewModel = viewModel,
+                    settings = settings,
+                    activeFont = activeFont,
+                    isDark = isDark,
+                    onBack = { showAppearancePage = false }
+                )
+            } else {
+                // 1. Sleek Search Header (Top-bar)
+                Surface(
+                    color = glassCardColor(isDark),
+                    shape = RoundedCornerShape(28.dp),
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .height(56.dp)
+                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search Icon",
-                        tint = if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Search or enter address",
-                        fontFamily = activeFont,
-                        fontSize = 14.sp,
-                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "Mic Icon",
-                        tint = if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73),
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search Icon",
+                            tint = if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (settingsSearchQuery.isEmpty()) {
+                                Text(
+                                    text = "Search settings...",
+                                    fontFamily = activeFont,
+                                    fontSize = 14.sp,
+                                    color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                                )
+                            }
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = settingsSearchQuery,
+                                onValueChange = { settingsSearchQuery = it },
+                                textStyle = LocalTextStyle.current.copy(
+                                    color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                                    fontFamily = activeFont,
+                                    fontSize = 14.sp
+                                ),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (settingsSearchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { settingsSearchQuery = "" },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear search query",
+                                    tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
                 }
-            }
 
-            // 2. Scrollable Settings Content (Main content area)
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+                // 2. Scrollable Settings Content (Main content area)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                 // Settings Title
                 Text(
                     text = "Settings",
@@ -1459,7 +2032,175 @@ fun SettingsSheet(
                     modifier = Modifier.padding(top = 8.dp, bottom = 4.dp, start = 4.dp)
                 )
 
-                // Customization Section
+                // 1. GENERAL GROUP
+                if (showGeneralGroup) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "GENERAL",
+                        fontFamily = activeFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
+                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+                    )
+                    Surface(
+                        color = glassCardColor(isDark),
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Search Engine Selection Area
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = "Search Icon",
+                                            tint = Color(0xFF0066FF),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "Search Engine",
+                                            fontFamily = activeFont,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                        )
+                                        val displayEngine = if (settings.searchEngine == "search.stormx.ninja") "StormX Search" else settings.searchEngine
+                                        Text(
+                                            text = "Active: $displayEngine",
+                                            fontFamily = activeFont,
+                                            fontSize = 12.sp,
+                                            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState())
+                                        .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
+                                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                                        .padding(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    listOf("StormX", "Google", "Bing", "Yahoo", "DuckDuckGo").forEach { engineName ->
+                                        val engineValue = if (engineName == "StormX") "search.stormx.ninja" else engineName
+                                        val isSelected = settings.searchEngine == engineValue
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
+                                                .clickable { viewModel.updateSearchEngine(engineValue) }
+                                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = engineName,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = activeFont,
+                                                color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
+
+                            // Languages Selection Area
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Language,
+                                            contentDescription = "Language Icon",
+                                            tint = Color(0xFF0066FF),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "Languages",
+                                            fontFamily = activeFont,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                        )
+                                        Text(
+                                            text = "Active: ${settings.language}",
+                                            fontFamily = activeFont,
+                                            fontSize = 12.sp,
+                                            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState())
+                                        .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
+                                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                                        .padding(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    listOf("English (US)", "简体中文", "Español", "Deutsch", "Français").forEach { lang ->
+                                        val isSelected = settings.language == lang
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
+                                                .clickable { viewModel.updateLanguage(lang) }
+                                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = lang,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = activeFont,
+                                                color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                }
+
+                // 2. CUSTOMIZATION GROUP
+                if (showCustomizationGroup) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "CUSTOMIZATION",
@@ -1478,11 +2219,11 @@ fun SettingsSheet(
                             .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            // Wallpaper Item (Aesthetic Glass Option)
+                            // Appearance Option
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { wallpaperIndex++ }
+                                    .clickable { showAppearancePage = true }
                                     .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -1493,8 +2234,8 @@ fun SettingsSheet(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Image,
-                                        contentDescription = "Wallpaper Icon",
+                                        imageVector = Icons.Default.Palette,
+                                        contentDescription = "Appearance Icon",
                                         tint = Color(0xFFE1306C),
                                         modifier = Modifier.size(20.dp)
                                     )
@@ -1502,322 +2243,82 @@ fun SettingsSheet(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Wallpaper",
+                                        text = "Appearance",
                                         fontFamily = activeFont,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 16.sp,
                                         color = if (isDark) Color.White else Color(0xFF1C1C1E)
                                     )
                                     Text(
-                                        text = selectedWallpaper,
+                                        text = "Typography, Spacing Details, Themes, Accent Color",
                                         fontFamily = activeFont,
                                         fontSize = 13.sp,
                                         color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.6f)
                                     )
                                 }
-                                Text(
-                                    text = "TAP TO CYCLE",
-                                    fontFamily = activeFont,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFE1306C).copy(alpha = 0.8f),
-                                    modifier = Modifier.padding(end = 4.dp)
+                                Icon(
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = "Go to Appearance settings",
+                                    tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.4f),
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
 
                             HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
 
-                            // Theme Selection Row
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isDark) Icons.Default.NightsStay else Icons.Default.WbSunny,
-                                            contentDescription = "Theme Icon",
-                                            tint = Color(0xFF0066FF),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "Theme Mode",
-                                            fontFamily = activeFont,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 16.sp,
-                                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                        )
-                                        Text(
-                                            text = "Active: ${settings.themeMode}",
-                                            fontFamily = activeFont,
-                                            fontSize = 12.sp,
-                                            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
+                            // Fluid Animations Toggle
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.updateFluidAnimationsEnabled(!settings.fluidAnimationsEnabled) }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
-                                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
-                                        .padding(4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        .size(36.dp)
+                                        .background(Color(0xFF8E8E93).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    listOf("LIGHT", "DARK", "SYSTEM").forEach { mode ->
-                                        val isSelected = settings.themeMode == mode
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
-                                                .clickable { viewModel.updateThemeMode(mode) }
-                                                .padding(vertical = 8.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = mode,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                fontFamily = activeFont,
-                                                color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
-                                            )
-                                        }
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = "Animations Icon",
+                                        tint = Color(0xFF8E8E93),
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
-                            }
-
-                            HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
-
-                            // Brand Accent Color Selection Row
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(Color(0xFF00BFA5).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Palette,
-                                            contentDescription = "Accent Icon",
-                                            tint = Color(0xFF00BFA5),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "Brand Accent Color",
-                                            fontFamily = activeFont,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 16.sp,
-                                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                        )
-                                        Text(
-                                            text = "ColorOS Aquamorphic palette",
-                                            fontFamily = activeFont,
-                                            fontSize = 12.sp,
-                                            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
-                                        )
-                                    }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Fluid Animations",
+                                        fontFamily = activeFont,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 16.sp,
+                                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                    )
+                                    Text(
+                                        text = "ColorOS motion effects",
+                                        fontFamily = activeFont,
+                                        fontSize = 12.sp,
+                                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                                    )
                                 }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(14.dp))
-                                        .padding(10.dp),
-                                    horizontalArrangement = Arrangement.SpaceAround,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val colors = listOf(Color(0xFF00BFA5), Color(0xFF00B0FF), Color(0xFFFF6D00), Color(0xFF7B1FA2), Color(0xFF37474F))
-                                    colors.forEachIndexed { idx, col ->
-                                        val isSelected = settings.customThemeColor == idx
-                                        Box(
-                                            modifier = Modifier
-                                                .size(32.dp)
-                                                .clip(CircleShape)
-                                                .background(col)
-                                                .border(
-                                                    width = if (isSelected) 2.5.dp else 0.dp,
-                                                    color = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                                    shape = CircleShape
-                                                )
-                                                .clickable { viewModel.updateThemeColor(idx) }
-                                        ) {
-                                            if (isSelected) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = "Selected Accent",
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(14.dp).align(Alignment.Center)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
-
-                            // Layout Spacing Density Row
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(Color(0xFF7B1FA2).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.DensityMedium,
-                                            contentDescription = "Density Icon",
-                                            tint = Color(0xFF7B1FA2),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "Layout Spacing Density",
-                                            fontFamily = activeFont,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 16.sp,
-                                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                        )
-                                        Text(
-                                            text = "Active: ${settings.layoutDensity}",
-                                            fontFamily = activeFont,
-                                            fontSize = 12.sp,
-                                            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
-                                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
-                                        .padding(4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    listOf("COMPACT", "MODERATE", "COMFORTABLE").forEach { d ->
-                                        val isSelected = settings.layoutDensity == d
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
-                                                .clickable { viewModel.updateLayoutDensity(d) }
-                                                .padding(vertical = 8.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = d,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                fontFamily = activeFont,
-                                                color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
-
-                            // Typography Style Row
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(Color(0xFFFF6D00).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.FontDownload,
-                                            contentDescription = "Font Icon",
-                                            tint = Color(0xFFFF6D00),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "Typography Font Style",
-                                            fontFamily = activeFont,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 16.sp,
-                                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                        )
-                                        Text(
-                                            text = "Active: ${settings.fontFamily}",
-                                            fontFamily = activeFont,
-                                            fontSize = 12.sp,
-                                            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
-                                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
-                                        .padding(4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    listOf("Default", "Serif", "Monospace").forEach { f ->
-                                        val isSelected = settings.fontFamily == f
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
-                                                .clickable { viewModel.updateFontFamily(f) }
-                                                .padding(vertical = 8.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = f,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                fontFamily = activeFont,
-                                                color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
-                                            )
-                                        }
-                                    }
-                                }
+                                Switch(
+                                    checked = settings.fluidAnimationsEnabled,
+                                    onCheckedChange = { viewModel.updateFluidAnimationsEnabled(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFF0066FF)
+                                    )
+                                )
                             }
                         }
                     }
                 }
+                }
 
-                // Security & Shield Section
+                // 3. SECURITY & SHIELD GROUP
+                if (showSecurityGroup) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "SECURITY & SHIELD",
@@ -1825,7 +2326,7 @@ fun SettingsSheet(
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
-                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp, top = 8.dp)
+                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
                     )
 
                     Surface(
@@ -1855,7 +2356,7 @@ fun SettingsSheet(
                                         contentDescription = "Shield Icon",
                                         tint = Color(0xFF4CAF50),
                                         modifier = Modifier.size(20.dp)
-                                        )
+                                    )
                                 }
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
@@ -1934,8 +2435,103 @@ fun SettingsSheet(
                         }
                     }
                 }
+                }
 
-                // Data Operations Section
+                // 4. WEBSITE NOTIFICATIONS GROUP
+                if (showNotificationGroup) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "WEBSITE NOTIFICATIONS",
+                            fontFamily = activeFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
+                            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+                        )
+
+                        Surface(
+                            color = glassCardColor(isDark),
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Allowed Notifications",
+                                        fontFamily = activeFont,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                    )
+                                    TextButton(onClick = { viewModel.clearAllWebsitePermissions() }) {
+                                        Text(
+                                            text = "Revoke All",
+                                            fontFamily = activeFont,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    webPerms.forEach { perm ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(if (isDark) Color(0x10FFFFFF) else Color(0x05000000), RoundedCornerShape(12.dp))
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Notifications,
+                                                contentDescription = "Notification Allowed Icon",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = perm.domain,
+                                                    fontFamily = activeFont,
+                                                    fontWeight = FontWeight.Medium,
+                                                    fontSize = 14.sp,
+                                                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                                )
+                                                Text(
+                                                    text = "Status: Allowed Notifications",
+                                                    fontFamily = activeFont,
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { viewModel.removeWebsitePermission(perm.domain) },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Delete website permission",
+                                                    tint = Color.Red.copy(alpha = 0.7f),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 5. DATA OPERATIONS GROUP
+                if (showDataGroup) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "DATA OPERATIONS",
@@ -1943,7 +2539,7 @@ fun SettingsSheet(
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
-                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp, top = 8.dp)
+                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
                     )
 
                     Surface(
@@ -1957,7 +2553,7 @@ fun SettingsSheet(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { 
+                                    .clickable {
                                         viewModel.clearBrowsingData()
                                         showClearSuccessMessage = true
                                     }
@@ -1994,6 +2590,34 @@ fun SettingsSheet(
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+                }
+
+                if (noSettingsFound) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "No results",
+                                tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Text(
+                                text = "No settings found matching your search",
+                                fontFamily = activeFont,
+                                fontSize = 15.sp,
+                                color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                            )
                         }
                     }
                 }
@@ -2041,6 +2665,7 @@ fun SettingsSheet(
 
                 Spacer(modifier = Modifier.height(30.dp))
             }
+        }
 
             // 3. Floating Bottom Navigation Bar matching the other immersive pages
             Row(
@@ -2050,12 +2675,12 @@ fun SettingsSheet(
             ) {
                 Surface(
                     color = glassCardColor(isDark),
-                    shape = RoundedCornerShape(34.dp),
+                    shape = RoundedCornerShape(28.dp),
                     tonalElevation = 6.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(68.dp)
-                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(34.dp))
+                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
                 ) {
                     Row(
                         modifier = Modifier
@@ -2131,6 +2756,380 @@ fun SettingsSheet(
                                 tint = Color(0xFF0066FF),
                                 modifier = Modifier.size(24.dp)
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ColumnScope.AppearanceSubPage(
+    viewModel: BrowserViewModel,
+    settings: BrowserSettings,
+    activeFont: FontFamily,
+    isDark: Boolean,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f)
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Immersive Header row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f),
+                        CircleShape
+                    )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "Back to Settings",
+                    tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(
+                text = "Appearance",
+                fontFamily = activeFont,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 24.sp,
+                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+            )
+        }
+
+        Text(
+            text = "THEME & BRAND ACCENT",
+            fontFamily = activeFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
+            modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+        )
+
+        Surface(
+            color = glassCardColor(isDark),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Theme Selection Row
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isDark) Icons.Default.NightsStay else Icons.Default.WbSunny,
+                                contentDescription = "Theme Icon",
+                                tint = Color(0xFF0066FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Theme Mode",
+                                fontFamily = activeFont,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp,
+                                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                            )
+                            Text(
+                                text = "Active: ${settings.themeMode}",
+                                fontFamily = activeFont,
+                                fontSize = 12.sp,
+                                color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
+                            .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("LIGHT", "DARK", "SYSTEM").forEach { mode ->
+                            val isSelected = settings.themeMode == mode
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
+                                    .clickable { viewModel.updateThemeMode(mode) }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = mode,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = activeFont,
+                                    color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
+
+                // Brand Accent Color Selection Row
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color(0xFF00BFA5).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Palette,
+                                contentDescription = "Accent Icon",
+                                tint = Color(0xFF00BFA5),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Brand Accent Color",
+                                fontFamily = activeFont,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp,
+                                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                            )
+                            Text(
+                                text = "ColorOS Aquamorphic palette",
+                                fontFamily = activeFont,
+                                fontSize = 12.sp,
+                                color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(14.dp))
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val colors = listOf(Color(0xFF00BFA5), Color(0xFF00B0FF), Color(0xFFFF6D00), Color(0xFF7B1FA2), Color(0xFF37474F))
+                        colors.forEachIndexed { idx, col ->
+                            val isSelected = settings.customThemeColor == idx
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(col)
+                                    .border(
+                                        width = if (isSelected) 2.5.dp else 0.dp,
+                                        color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                                        shape = CircleShape
+                                    )
+                                    .clickable { viewModel.updateThemeColor(idx) }
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selected Accent",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(14.dp).align(Alignment.Center)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = "TYPOGRAPHY & LAYOUT",
+            fontFamily = activeFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
+            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp)
+        )
+
+        Surface(
+            color = glassCardColor(isDark),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Layout Spacing Density Row
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color(0xFF7B1FA2).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DensityMedium,
+                                contentDescription = "Density Icon",
+                                tint = Color(0xFF7B1FA2),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Layout Spacing Density",
+                                fontFamily = activeFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                            )
+                            Text(
+                                text = "Active: ${settings.layoutDensity}",
+                                fontFamily = activeFont,
+                                fontSize = 12.sp,
+                                color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
+                            .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("COMPACT", "MODERATE", "COMFORTABLE").forEach { d ->
+                            val isSelected = settings.layoutDensity == d
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
+                                    .clickable { viewModel.updateLayoutDensity(d) }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = d,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = activeFont,
+                                    color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
+
+                // Typography Style Row
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color(0xFFFF6D00).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FontDownload,
+                                contentDescription = "Font Icon",
+                                tint = Color(0xFFFF6D00),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Typography Font Style",
+                                fontFamily = activeFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                            )
+                            Text(
+                                text = "Active: ${settings.fontFamily}",
+                                fontFamily = activeFont,
+                                fontSize = 12.sp,
+                                color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
+                            .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("Default", "Serif", "Monospace").forEach { f ->
+                            val isSelected = settings.fontFamily == f
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
+                                    .clickable { viewModel.updateFontFamily(f) }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = f,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = activeFont,
+                                    color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
+                                )
+                            }
                         }
                     }
                 }
@@ -2233,13 +3232,6 @@ fun BookmarksPage(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "Mic Icon",
-                        tint = if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73),
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
             }
 
@@ -2389,12 +3381,12 @@ fun BookmarksPage(
             ) {
                 Surface(
                     color = glassCardColor(isDark),
-                    shape = RoundedCornerShape(34.dp),
+                    shape = RoundedCornerShape(28.dp),
                     tonalElevation = 6.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(68.dp)
-                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(34.dp))
+                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
                 ) {
                     Row(
                         modifier = Modifier
@@ -2460,7 +3452,7 @@ fun BookmarksPage(
                             }
                         }
                         IconButton(onClick = {
-                            viewModel.showSettings.value = true
+                            viewModel.showMenuDrawer.value = true
                             onDismiss()
                         }) {
                             Icon(
@@ -2740,12 +3732,12 @@ fun HistoryPage(
             ) {
                 Surface(
                     color = glassCardColor(isDark),
-                    shape = RoundedCornerShape(34.dp),
+                    shape = RoundedCornerShape(28.dp),
                     tonalElevation = 6.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(68.dp)
-                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(34.dp))
+                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
                 ) {
                     Row(
                         modifier = Modifier
@@ -2811,7 +3803,7 @@ fun HistoryPage(
                             }
                         }
                         IconButton(onClick = {
-                            viewModel.showSettings.value = true
+                            viewModel.showMenuDrawer.value = true
                             onDismiss()
                         }) {
                             Icon(
@@ -3347,12 +4339,12 @@ fun DownloadsPage(
             ) {
                 Surface(
                     color = glassCardColor(isDark),
-                    shape = RoundedCornerShape(34.dp),
+                    shape = RoundedCornerShape(28.dp),
                     tonalElevation = 6.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(68.dp)
-                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(34.dp))
+                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
                 ) {
                     Row(
                         modifier = Modifier
@@ -3418,7 +4410,7 @@ fun DownloadsPage(
                             }
                         }
                         IconButton(onClick = {
-                            viewModel.showSettings.value = true
+                            viewModel.showMenuDrawer.value = true
                             onDismiss()
                         }) {
                             Icon(
@@ -3565,9 +4557,7 @@ fun getWebsiteThemedColor(url: String?): Color {
 
 // Helpers for ColorOS 16 Adaptive Interceptor layout
 fun isHomepageUrl(url: String?): Boolean {
-    if (url == null) return true
-    val clean = url.trim().lowercase().removeSuffix("/")
-    return clean == "https://search.stormx.ninja" || clean == "search.stormx.ninja" || clean == "about:blank" || clean == "homepage" || clean.isEmpty()
+    return false
 }
 
 @Composable
@@ -3667,17 +4657,14 @@ fun SpeedDialUI(
             )
         }
 
-        val dialItems = listOf(
-            DialItemData("Google", "https://google.com", Color(0xFF4285F4), Icons.Default.Search),
-            DialItemData("YouTube", "https://youtube.com", Color(0xFFFF0000), Icons.Default.PlayArrow),
-            DialItemData("Twitter", "https://twitter.com", Color(0xFF1DA1F2), Icons.Default.Share),
-            DialItemData("GitHub", "https://github.com", if (isDark) Color.White else Color.Black, Icons.Default.Star),
-            DialItemData("LinkedIn", "https://linkedin.com", Color(0xFF0A66C2), Icons.Default.Person),
-            DialItemData("Instagram", "https://instagram.com", Color(0xFFE1306C), Icons.Default.Favorite)
+        val primaryWebsites = listOf(
+            DialItemData("StormX", "https://search.stormx.ninja", Color(0xFFFF1B2D), Icons.Default.Search)
         )
 
-        // Draw 2 rows of items chunked by 3
-        val chunked = dialItems.chunked(3)
+        // Fixed 2 x 4 layout (exactly 4 columns)
+        val columns = 4
+        val chunked = primaryWebsites.chunked(columns)
+
         Column(
             verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier.fillMaxWidth()
@@ -3717,57 +4704,19 @@ fun SpeedDialUI(
                                     fontFamily = fontFamily,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                    color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                                    maxLines = 1
                                 )
                             }
                         }
                     }
-                }
-            }
 
-            // Add Dial trigger row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.clickable {
-                            android.widget.Toast.makeText(context, "Speed dial addition coming soon!", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(glassCardColor(isDark))
-                                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Add custom site",
-                                tint = if (isDark) Color.White.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.6f),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        Text(
-                            text = "Add",
-                            fontFamily = fontFamily,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                        )
+                    // Add empty structural boxes if row has fewer items than column count
+                    val missingAmount = columns - rowItems.size
+                    repeat(missingAmount) {
+                        Box(modifier = Modifier.weight(1f))
                     }
                 }
-                // Structural filler boxes to match the width layout grid
-                Box(modifier = Modifier.weight(1f))
-                Box(modifier = Modifier.weight(1f))
             }
         }
     }
@@ -3999,6 +4948,158 @@ fun FloatingIOSDownloadHUD(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// iOS-Style Dynamic Notification Core HUD
+// ==========================================
+@Composable
+fun IosNotificationHUD(
+    notifications: List<BrowserViewModel.IosNotification>,
+    onDismiss: (String) -> Unit,
+    activeFont: FontFamily,
+    isDark: Boolean
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(0.92f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            notifications.forEach { notif ->
+                key(notif.id) {
+                    IosNotificationItem(
+                        notification = notif,
+                        onDismiss = { onDismiss(notif.id) },
+                        activeFont = activeFont,
+                        isDark = isDark
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun IosNotificationItem(
+    notification: BrowserViewModel.IosNotification,
+    onDismiss: () -> Unit,
+    activeFont: FontFamily,
+    isDark: Boolean
+) {
+    var isVisible by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(Unit) {
+        isVisible = true
+    }
+
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeIn(),
+        exit = shrinkVertically() + fadeOut()
+    ) {
+        val backgroundColor = if (isDark) {
+            Color(0xEB1C1C1E) // Premium dark translucent glass
+        } else {
+            Color(0xF2F2F2F7) // Pure light glass
+        }
+        
+        val borderColor = if (isDark) {
+            Color(0x3DFFFFFF)
+        } else {
+            Color(0x1F000000)
+        }
+
+        val cardShadow = if (isDark) 6.dp else 12.dp
+
+        Surface(
+            color = backgroundColor,
+            shape = RoundedCornerShape(26.dp), // Premium iOS rounded capsule style
+            tonalElevation = cardShadow,
+            shadowElevation = cardShadow,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, borderColor, RoundedCornerShape(26.dp))
+                .clickable { onDismiss() }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Determine icon & color based on type
+                val iconInfo = when (notification.type) {
+                    "DOWNLOAD_START" -> Pair(Icons.Default.Download, Color(0xFF007AFF)) // Blue
+                    "DOWNLOAD_COMPLETED" -> Pair(Icons.Default.CheckCircle, Color(0xFF34C759)) // Green
+                    "DOWNLOAD_FAILED" -> Pair(Icons.Default.Warning, Color(0xFFFF3B30)) // Red
+                    "WEBSITE_ALLOWED" -> Pair(Icons.Default.Notifications, Color(0xFF5856D6)) // Indigo
+                    "WEBSITE_BLOCKED" -> Pair(Icons.Default.Notifications, Color(0xFF8E8E93)) // Grey
+                    else -> Pair(Icons.Default.Info, Color(0xFF007AFF))
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(iconInfo.second.copy(alpha = 0.15f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = iconInfo.first,
+                        contentDescription = "Notification Icon",
+                        tint = iconInfo.second,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = notification.title,
+                        fontFamily = activeFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = notification.message,
+                        fontFamily = activeFont,
+                        fontSize = 12.sp,
+                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.8f),
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                IconButton(
+                    onClick = {
+                        isVisible = false
+                        onDismiss()
+                    },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Dismiss Notification",
+                        tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.4f),
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }

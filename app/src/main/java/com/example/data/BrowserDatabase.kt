@@ -44,7 +44,7 @@ data class DownloadItem(
 @Entity(tableName = "browser_settings")
 data class BrowserSettings(
     @PrimaryKey val id: Int = 1,
-    val homeUrl: String = "https://search.stormx.ninja",
+    val homeUrl: String = "https://search.stormx.ninja/",
     val themeMode: String = "SYSTEM", // LIGHT, DARK, SYSTEM
     val customThemeColor: Int = 0, // 0 means default ColorOS 16 Emerald Green, 1=Sky Blue, 2=Sunset Orange, 3=Cyber Lavender, 4=Obsidian Slate
     val fontFamily: String = "Default", // Sans-serif, Playfair, Monospace
@@ -52,13 +52,20 @@ data class BrowserSettings(
     val adBlockEnabled: Boolean = true,
     val trackerBlockEnabled: Boolean = true,
     val totalAdsBlocked: Int = 0,
-    val totalTrackersBlocked: Int = 0
+    val totalTrackersBlocked: Int = 0,
+    val searchEngine: String = "search.stormx.ninja", // search.stormx.ninja, Google, Bing, Yahoo, DuckDuckGo
+    val language: String = "English (US)", // English (US), 简体中文, Español, Deutsch, Français
+    val fluidAnimationsEnabled: Boolean = true,
+    val speedDialLayout: String = "4x2 Grid" // 4x2 Grid, 3x3 Grid, 5x2 Grid
 )
 
 @Entity(tableName = "website_permissions")
 data class WebsitePermission(
     @PrimaryKey val domain: String,
-    val notificationsAllowed: Boolean,
+    val notificationsAllowed: Boolean = false,
+    val locationAllowed: Boolean = false,
+    val cameraAllowed: Boolean = false,
+    val microphoneAllowed: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -155,7 +162,7 @@ interface BrowserDao {
         BrowserSettings::class,
         WebsitePermission::class
     ],
-    version = 2,
+    version = 4,
     exportSchema = false
 )
 abstract class BrowserDatabase : RoomDatabase() {

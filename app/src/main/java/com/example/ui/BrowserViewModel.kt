@@ -21,6 +21,7 @@ import com.example.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.net.URL
@@ -62,6 +63,10 @@ class BrowserViewModel(
     private val _blockedTrackersSession = MutableStateFlow(0)
     val blockedTrackersSession: StateFlow<Int> = _blockedTrackersSession.asStateFlow()
 
+    // Thread-safe in-memory counters to batch disk updates
+    private val pendingAdsCount = java.util.concurrent.atomic.AtomicInteger(0)
+    private val pendingTrackersCount = java.util.concurrent.atomic.AtomicInteger(0)
+
     // Sheets / Dialogs Visibility UI state
     val showTabsOverview = MutableStateFlow(false)
     val showSettings = MutableStateFlow(false)
@@ -69,6 +74,7 @@ class BrowserViewModel(
     val showHistory = MutableStateFlow(false)
     val showDownloads = MutableStateFlow(false)
     val showShieldPanel = MutableStateFlow(false)
+    val showMenuDrawer = MutableStateFlow(false)
 
     // Redirect proposal data
     data class AppRedirectProposal(
@@ -82,13 +88,143 @@ class BrowserViewModel(
     // Live download speeds track
     val downloadSpeeds = mutableStateMapOf<Int, String>()
 
+    // iOS-style notifications state
+    data class IosNotification(
+        val id: String,
+        val title: String,
+        val message: String,
+        val type: String, // "DOWNLOAD_START", "DOWNLOAD_COMPLETED", "DOWNLOAD_FAILED", "WEBSITE_ALLOWED", "WEBSITE_BLOCKED"
+        val subtext: String? = null
+    )
+    private val _iosNotifications = MutableStateFlow<List<IosNotification>>(emptyList())
+    val iosNotifications: StateFlow<List<IosNotification>> = _iosNotifications.asStateFlow()
+
+    fun showIosNotification(title: String, message: String, type: String, subtext: String? = null) {
+        val id = System.currentTimeMillis().toString() + "_" + (1..1000).random()
+        val notif = IosNotification(id, title, message, type, subtext)
+        _iosNotifications.update { it + notif }
+        // Auto-dismiss after 4.5 seconds
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(4500)
+            dismissIosNotification(id)
+        }
+    }
+
+    fun dismissIosNotification(id: String) {
+        _iosNotifications.update { list -> list.filter { it.id != id } }
+    }
+
     // Flow integration for Bookmarks, History, Downloads, and Settings
     val bookmarks = repository.bookmarksFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val history = repository.historyFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val downloads = repository.downloadsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val settings = repository.settingsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BrowserSettings())
+    val websitePermissions = repository.websitePermissionsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun toggleWebsiteNotification(domain: String, allowed: Boolean) {
+        viewModelScope.launch {
+            val existing = websitePermissions.value.find { it.domain == domain } ?: WebsitePermission(domain = domain)
+            val updated = existing.copy(notificationsAllowed = allowed)
+            repository.saveWebsitePermission(updated)
+            showIosNotification(
+                title = if (allowed) "Notification Allowed" else "Notification Restricted",
+                message = if (allowed) "Allowing notifications on $domain" else "Restricting notifications on $domain",
+                type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
+                subtext = domain
+            )
+        }
+    }
+
+    fun toggleWebsiteLocation(domain: String, allowed: Boolean) {
+        viewModelScope.launch {
+            val existing = websitePermissions.value.find { it.domain == domain } ?: WebsitePermission(domain = domain)
+            val updated = existing.copy(locationAllowed = allowed)
+            repository.saveWebsitePermission(updated)
+            showIosNotification(
+                title = if (allowed) "Location Access Allowed" else "Location Access Restricted",
+                message = if (allowed) "Allowing location access on $domain" else "Restricting location access on $domain",
+                type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
+                subtext = domain
+            )
+        }
+    }
+
+    fun toggleWebsiteCamera(domain: String, allowed: Boolean) {
+        viewModelScope.launch {
+            val existing = websitePermissions.value.find { it.domain == domain } ?: WebsitePermission(domain = domain)
+            val updated = existing.copy(cameraAllowed = allowed)
+            repository.saveWebsitePermission(updated)
+            showIosNotification(
+                title = if (allowed) "Camera Access Allowed" else "Camera Access Restricted",
+                message = if (allowed) "Allowing camera access on $domain" else "Restricting camera access on $domain",
+                type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
+                subtext = domain
+            )
+        }
+    }
+
+    fun toggleWebsiteMicrophone(domain: String, allowed: Boolean) {
+        viewModelScope.launch {
+            val existing = websitePermissions.value.find { it.domain == domain } ?: WebsitePermission(domain = domain)
+            val updated = existing.copy(microphoneAllowed = allowed)
+            repository.saveWebsitePermission(updated)
+            showIosNotification(
+                title = if (allowed) "Microphone Access Allowed" else "Microphone Access Restricted",
+                message = if (allowed) "Allowing microphone access on $domain" else "Restricting microphone access on $domain",
+                type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
+                subtext = domain
+            )
+        }
+    }
+
+    fun removeWebsitePermission(domain: String) {
+        viewModelScope.launch {
+            repository.removeWebsitePermission(domain)
+            showIosNotification(
+                title = "Website Permission Revoked",
+                message = "Removed all permissions for $domain",
+                type = "WEBSITE_BLOCKED",
+                subtext = domain
+            )
+        }
+    }
+
+    fun clearAllWebsitePermissions() {
+        viewModelScope.launch {
+            repository.clearAllWebsitePermissions()
+            showIosNotification(
+                title = "Permissions Cleared",
+                message = "All stored website permissions have been cleared",
+                type = "WEBSITE_BLOCKED"
+            )
+        }
+    }
 
     init {
+        // Start periodic database sync for blocked ads and trackers to prevent SQLite deadlock & main-thread freezes
+        viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                kotlinx.coroutines.delay(3000)
+                val ads = pendingAdsCount.getAndSet(0)
+                val trackers = pendingTrackersCount.getAndSet(0)
+                if (ads > 0 || trackers > 0) {
+                    try {
+                        val current = repository.getSettings()
+                        repository.saveSettings(
+                            current.copy(
+                                totalAdsBlocked = current.totalAdsBlocked + ads,
+                                totalTrackersBlocked = current.totalTrackersBlocked + trackers
+                            )
+                        )
+                    } catch (e: Exception) {
+                        // Restore pending count to attempt sync later if DB is locked
+                        pendingAdsCount.addAndGet(ads)
+                        pendingTrackersCount.addAndGet(trackers)
+                    }
+                }
+            }
+        }
+
         // Load initial state
         viewModelScope.launch {
             val dbTabs = repository.getAllTabs()
@@ -98,17 +234,19 @@ class BrowserViewModel(
                 // Create custom homepage tab to start
                 addNewTab(initialSettings.homeUrl)
             } else {
-                _tabs.value = dbTabs.map { 
-                    TabState(id = it.id, url = it.url, title = it.title)
+                _tabs.value = dbTabs.map { tab ->
+                    val finalUrl = if (tab.url == "homepage") "https://search.stormx.ninja/" else tab.url
+                    TabState(id = tab.id, url = finalUrl, title = tab.title)
                 }
                 _activeTabId.value = dbTabs.first().id
-                _currentUrlInput.value = dbTabs.first().url
+                val firstUrl = dbTabs.first().url
+                _currentUrlInput.value = if (firstUrl == "homepage") "https://search.stormx.ninja/" else firstUrl
             }
         }
     }
 
     // Tab Management
-    fun addNewTab(url: String = "https://search.stormx.ninja") {
+    fun addNewTab(url: String = "https://search.stormx.ninja/") {
         viewModelScope.launch {
             val title = "New Tab"
             val id = repository.addTab(url, title)
@@ -236,14 +374,12 @@ class BrowserViewModel(
                         val isAd = isAdHost(host, urlStr)
 
                         if ((isTracker && isTrackerBlockOn) || (isAd && isAdBlockOn)) {
-                            viewModelScope.launch {
-                                if (isTracker) {
-                                    _blockedTrackersSession.value++
-                                    repository.incrementTrackers(1)
-                                } else {
-                                    _blockedAdsSession.value++
-                                    repository.incrementAds(1)
-                                }
+                            if (isTracker) {
+                                _blockedTrackersSession.update { it + 1 }
+                                pendingTrackersCount.incrementAndGet()
+                            } else {
+                                _blockedAdsSession.update { it + 1 }
+                                pendingAdsCount.incrementAndGet()
                             }
                             // Intercept and return empty asset
                             return WebResourceResponse(
@@ -299,6 +435,46 @@ class BrowserViewModel(
                 override fun onReceivedIcon(view: WebView?, icon: android.graphics.Bitmap?) {
                     // Custom favicon fetch from URL or load directly
                 }
+
+                override fun onPermissionRequest(request: android.webkit.PermissionRequest?) {
+                    if (request == null) return
+                    val origin = request.origin?.toString() ?: ""
+                    val domain = getDomainFromUrl(origin)
+                    val perm = websitePermissions.value.find { it.domain == domain }
+                    
+                    val cameraAllowed = perm?.cameraAllowed ?: false
+                    val micAllowed = perm?.microphoneAllowed ?: false
+                    
+                    val grantedResources = mutableListOf<String>()
+                    for (res in request.resources) {
+                        if (res == android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE) {
+                            if (cameraAllowed) {
+                                grantedResources.add(res)
+                            }
+                        } else if (res == android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE) {
+                            if (micAllowed) {
+                                grantedResources.add(res)
+                            }
+                        } else {
+                            grantedResources.add(res)
+                        }
+                    }
+                    if (grantedResources.isNotEmpty()) {
+                        request.grant(grantedResources.toTypedArray())
+                    } else {
+                        request.deny()
+                    }
+                }
+
+                override fun onGeolocationPermissionsShowPrompt(
+                    origin: String?,
+                    callback: android.webkit.GeolocationPermissions.Callback?
+                ) {
+                    if (origin == null || callback == null) return
+                    val domain = getDomainFromUrl(origin)
+                    val allowed = websitePermissions.value.find { it.domain == domain }?.locationAllowed ?: false
+                    callback.invoke(origin, allowed, false)
+                }
             }
 
             // Browser download listener to support file downloading
@@ -313,11 +489,27 @@ class BrowserViewModel(
         return webView
     }
 
+    private fun getDomainFromUrl(url: String?): String {
+        if (url.isNullOrEmpty()) return ""
+        return try {
+            val uri = java.net.URI(url)
+            var host = uri.host ?: ""
+            if (host.startsWith("www.")) {
+                host = host.substring(4)
+            }
+            host.ifEmpty { "" }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
     private fun isTrackerHost(host: String): Boolean {
         val trackers = listOf(
             "google-analytics.com", "analytics.", "quantserve.com", "scorecardresearch.com",
             "statcounter.com", "mixpanel.com", "hotjar.com", "segment.io", "amplitude.com",
-            "facebook.net", "fbcdn.net", "tracker", "telemetry", "metrics"
+            "facebook.net", "fbcdn.net", "tracker", "telemetry", "metrics", "crazyegg.com",
+            "userreport.com", "optimizely.com", "yandex.ru/clck", "mc.yandex.ru", "adjust.com",
+            "appsflyer.com", "branch.io", "kochava.com"
         )
         return trackers.any { host.contains(it) }
     }
@@ -328,11 +520,16 @@ class BrowserViewModel(
             "amazon-adsystem.com", "taboola.com", "outbrain.com", "criteo.com", 
             "popads.net", "trafficjunky.com", "pubmatic.com", "adnxs.com", 
             "rubiconproject.com", "openx.net", "casalemedia.com", "adsystem",
-            "adserver", "adroll.com", "buysellads.com"
+            "adserver", "adroll.com", "buysellads.com", "exoclick.com", 
+            "popcash.net", "propellerads.com", "adsterra.com", "adform.net",
+            "yieldlab.net", "smartadserver.com", "adskeeper", "mgid.com",
+            "indexww.com", "revcontent.com", "addthis.com", "outbrain"
         )
         val urlLower = url.lowercase()
         val containsAdPatterns = urlLower.contains("/ads/") || urlLower.contains("/adserver/") || 
-                urlLower.contains("?ad_id") || urlLower.contains("&ad_") || urlLower.contains("/banners/")
+                urlLower.contains("?ad_id") || urlLower.contains("&ad_") || urlLower.contains("/banners/") ||
+                urlLower.contains("googleads") || urlLower.contains("pagead") || urlLower.contains("analytics") ||
+                urlLower.contains("adservice") || urlLower.contains("/ad/")
         
         return adDomains.any { host.contains(it) } || containsAdPatterns
     }
@@ -372,7 +569,14 @@ class BrowserViewModel(
             formattedUrl = if (formattedUrl.contains(".") && !formattedUrl.contains(" ")) {
                 "https://$formattedUrl"
             } else {
-                "https://search.stormx.ninja/search?q=${Uri.encode(formattedUrl)}"
+                val engine = settings.value.searchEngine
+                when (engine) {
+                    "Google" -> "https://www.google.com/search?q=${Uri.encode(formattedUrl)}"
+                    "Bing" -> "https://www.bing.com/search?q=${Uri.encode(formattedUrl)}"
+                    "Yahoo" -> "https://search.yahoo.com/search?p=${Uri.encode(formattedUrl)}"
+                    "DuckDuckGo" -> "https://duckduckgo.com/?q=${Uri.encode(formattedUrl)}"
+                    else -> "https://search.stormx.ninja/search?q=${Uri.encode(formattedUrl)}"
+                }
             }
         }
 
@@ -446,6 +650,42 @@ class BrowserViewModel(
         }
     }
 
+    fun updateSearchEngine(engine: String) {
+        viewModelScope.launch {
+            val current = repository.getSettings()
+            val newHomeUrl = when (engine) {
+                "Google" -> "https://www.google.com/"
+                "Bing" -> "https://www.bing.com/"
+                "Yahoo" -> "https://www.yahoo.com/"
+                "DuckDuckGo" -> "https://duckduckgo.com/"
+                "search.stormx.ninja" -> "https://search.stormx.ninja/"
+                else -> "https://search.stormx.ninja/"
+            }
+            repository.saveSettings(current.copy(searchEngine = engine, homeUrl = newHomeUrl))
+        }
+    }
+
+    fun updateLanguage(lang: String) {
+        viewModelScope.launch {
+            val current = repository.getSettings()
+            repository.saveSettings(current.copy(language = lang))
+        }
+    }
+
+    fun updateFluidAnimationsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = repository.getSettings()
+            repository.saveSettings(current.copy(fluidAnimationsEnabled = enabled))
+        }
+    }
+
+    fun updateSpeedDialLayout(layout: String) {
+        viewModelScope.launch {
+            val current = repository.getSettings()
+            repository.saveSettings(current.copy(speedDialLayout = layout))
+        }
+    }
+
     fun toggleAdBlock() {
         viewModelScope.launch {
             val current = repository.getSettings()
@@ -463,7 +703,8 @@ class BrowserViewModel(
     fun clearBrowsingData() {
         viewModelScope.launch {
             repository.clearHistory()
-            Toast.makeText(getApplication(), "History cleared successfully", Toast.LENGTH_SHORT).show()
+            val text = BrowserTranslator.translateText("History cleared successfully", settings.value.language)
+            Toast.makeText(getApplication(), text, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -496,6 +737,13 @@ class BrowserViewModel(
     
                     val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                     val dmId = downloadManager.enqueue(request)
+                    
+                    showIosNotification(
+                        title = "Download Started",
+                        message = "Starting download for $fileName",
+                        type = "DOWNLOAD_START",
+                        subtext = fileName
+                    )
     
                     // Polling tracking job in IO coroutine to monitor raw bytes and compute speed in real-time
                     viewModelScope.launch(Dispatchers.IO) {
@@ -544,10 +792,26 @@ class BrowserViewModel(
                                     DownloadManager.STATUS_RUNNING -> "DOWNLOADING"
                                     DownloadManager.STATUS_SUCCESSFUL -> {
                                         isRunning = false
+                                        withContext(Dispatchers.Main) {
+                                            showIosNotification(
+                                                title = "Download Completed",
+                                                message = "Successfully saved: $fileName",
+                                                type = "DOWNLOAD_COMPLETED",
+                                                subtext = fileName
+                                            )
+                                        }
                                         "COMPLETED"
                                     }
                                     DownloadManager.STATUS_FAILED -> {
                                         isRunning = false
+                                        withContext(Dispatchers.Main) {
+                                            showIosNotification(
+                                                title = "Download Failed",
+                                                message = "Failed to download: $fileName",
+                                                type = "DOWNLOAD_FAILED",
+                                                subtext = fileName
+                                            )
+                                        }
                                         "FAILED"
                                     }
                                     DownloadManager.STATUS_PAUSED -> "PAUSED"
@@ -577,7 +841,8 @@ class BrowserViewModel(
                         }
                     }
     
-                    Toast.makeText(context, "Download started: $fileName", Toast.LENGTH_LONG).show()
+                    val startText = BrowserTranslator.translateText("Download started: $fileName", settings.value.language)
+                    Toast.makeText(context, startText, Toast.LENGTH_LONG).show()
     
                 } catch (e: Exception) {
                     viewModelScope.launch {
@@ -587,7 +852,16 @@ class BrowserViewModel(
                             repository.updateDownload(currentDownload.copy(status = "FAILED"))
                         }
                     }
-                    Toast.makeText(context, "Download failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    withContext(Dispatchers.Main) {
+                        showIosNotification(
+                            title = "Download Failed",
+                            message = e.localizedMessage ?: "Unknown error occurred",
+                            type = "DOWNLOAD_FAILED",
+                            subtext = fileName
+                        )
+                    }
+                    val failText = BrowserTranslator.translateText("Download failed: ${e.localizedMessage}", settings.value.language)
+                    Toast.makeText(context, failText, Toast.LENGTH_LONG).show()
                 }
             }
         }

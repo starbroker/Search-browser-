@@ -84,11 +84,23 @@ class BrowserRepository(private val dao: BrowserDao) {
 
     // Settings
     // Ensure that settings are never null by providing default fallback of BrowserSettings()
-    val settingsFlow: Flow<BrowserSettings> = dao.getSettingsFlow().map { it ?: BrowserSettings() }
+    val settingsFlow: Flow<BrowserSettings> = dao.getSettingsFlow().map { 
+        val current = it ?: BrowserSettings()
+        if (current.homeUrl == "homepage") {
+            current.copy(homeUrl = "https://search.stormx.ninja/")
+        } else {
+            current
+        }
+    }
 
     suspend fun getSettings(): BrowserSettings {
-        return dao.getSettings() ?: BrowserSettings().also {
-            dao.insertOrUpdateSettings(it)
+        val settings = dao.getSettings() ?: BrowserSettings()
+        return if (settings.homeUrl == "homepage") {
+            val updated = settings.copy(homeUrl = "https://search.stormx.ninja/")
+            dao.insertOrUpdateSettings(updated)
+            updated
+        } else {
+            settings
         }
     }
 
@@ -111,6 +123,10 @@ class BrowserRepository(private val dao: BrowserDao) {
 
     suspend fun addWebsitePermission(domain: String, allowed: Boolean) {
         dao.insertWebsitePermission(WebsitePermission(domain = domain, notificationsAllowed = allowed))
+    }
+
+    suspend fun saveWebsitePermission(permission: WebsitePermission) {
+        dao.insertWebsitePermission(permission)
     }
 
     suspend fun removeWebsitePermission(domain: String) {

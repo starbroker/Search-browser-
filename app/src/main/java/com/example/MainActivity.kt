@@ -39,8 +39,10 @@ class MainActivity : ComponentActivity() {
             val settings by browserViewModel.settings.collectAsState()
 
             SearchAppTheme(settings = settings) {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    // Unused scaffold padding suppressed as we manage safe status-bar margins inside our Custom Header
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                ) {
                     BrowserScreen(viewModel = browserViewModel)
                 }
             }
