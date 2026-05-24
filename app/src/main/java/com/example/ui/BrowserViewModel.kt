@@ -106,13 +106,8 @@ class BrowserViewModel(
         if (enabled) {
             _isWebViewSupported.value = false
         } else {
-            try {
-                val dummy = WebView(getApplication())
-                dummy.destroy()
-                _isWebViewSupported.value = true
-            } catch (t: Throwable) {
-                _isWebViewSupported.value = false
-            }
+            // Assume supported until attempt in Compose
+            _isWebViewSupported.value = true
         }
     }
 
@@ -281,19 +276,8 @@ class BrowserViewModel(
         if (startSimulated) {
             _isWebViewSupported.value = false
         } else {
-            // Safe try-catch check to prevent crashing on launch if WebView system packages are missing
-            try {
-                val dummy = WebView(application)
-                dummy.destroy()
-                _isWebViewSupported.value = true
-            } catch (t: Throwable) {
-                _isWebViewSupported.value = false
-                showIosNotification(
-                    title = "Aquamorphic Engine Simulator",
-                    message = "Running in simulated browser mode (Android System WebView missing).",
-                    type = "DOWNLOAD_FAILED"
-                )
-            }
+            // Assume supported until attempt in Compose
+            _isWebViewSupported.value = true
         }
 
         // Start periodic database sync for blocked ads and trackers to prevent SQLite deadlock & main-thread freezes
