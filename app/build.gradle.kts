@@ -54,7 +54,7 @@ android {
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      if (System.getenv("STORE_PASSWORD") != null) {
+      if (!System.getenv("STORE_PASSWORD").isNullOrEmpty()) {
         signingConfig = signingConfigs.getByName("release")
       }
     }
