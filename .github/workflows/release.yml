@@ -42,6 +42,14 @@ jobs:
       - name: Create build-artifacts directory
         run: mkdir -p build-artifacts
 
+      - name: Generate debug.keystore if missing
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 -keypass android -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace
 
