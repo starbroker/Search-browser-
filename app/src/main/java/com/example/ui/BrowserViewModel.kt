@@ -545,7 +545,7 @@ class BrowserViewModel(
                     _webViewUpdateTrigger.value += 1
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                         val currentUrl = _tabs.value.find { it.id == tabId }?.url ?: "https://search.stormx.ninja"
-                        val newView = getOrCreateWebView(tabId, context)
+                        val newView = getOrCreateWebView(tabId, appCtx)
                         newView.loadUrl(currentUrl)
                         _webViewUpdateTrigger.value += 1
                     }, 500)
