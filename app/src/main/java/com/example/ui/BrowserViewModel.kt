@@ -399,7 +399,17 @@ class BrowserViewModel(
     }
 
     private fun createWebViewInstance(tabId: Int, context: Context): WebView {
+        try {
+            val wasmDir = java.io.File(context.cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
+            val jsDir = java.io.File(context.cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
+            if (!wasmDir.exists()) wasmDir.mkdirs()
+            if (!jsDir.exists()) jsDir.mkdirs()
+        } catch (e: Exception) {}
+
         val webView = WebView(context).apply {
+            if (isEmulator()) {
+                setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
+            }
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
