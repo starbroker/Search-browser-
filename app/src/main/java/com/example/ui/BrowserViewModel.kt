@@ -49,6 +49,10 @@ class BrowserViewModel(
 
     private val prefs = getApplication<Application>().getSharedPreferences("browser_prefs", Context.MODE_PRIVATE)
 
+    // Trigger state to forcefully redraw WebViews if the render engine crashes
+    private val _webViewUpdateTrigger = MutableStateFlow(0)
+    val webViewUpdateTrigger: StateFlow<Int> = _webViewUpdateTrigger.asStateFlow()
+
     private val _forceSimulatedMode = MutableStateFlow<Boolean>(false)
     val forceSimulatedMode: StateFlow<Boolean> = _forceSimulatedMode.asStateFlow()
 
@@ -399,7 +403,22 @@ class BrowserViewModel(
     }
 
     private fun createWebViewInstance(tabId: Int, context: Context): WebView {
-        val webView = WebView(context).apply {
+        // Use applicationContext to avoid leaking Activity and surface contexts
+        val appCtx = context.applicationContext
+
+        try {
+            val wasmDir = java.io.File(appCtx.cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
+            val jsDir = java.io.File(appCtx.cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
+            if (!wasmDir.exists()) wasmDir.mkdirs()
+            if (!jsDir.exists()) jsDir.mkdirs()
+        } catch (e: Exception) {}
+        
+        val webView = WebView(appCtx).apply {
+            val finger = android.os.Build.FINGERPRINT.lowercase()
+            val model = android.os.Build.MODEL.lowercase()
+            if (finger.contains("generic") || finger.contains("vbox") || model.contains("emulator") || model.contains("sdk") || model.contains("gphone") || model.contains("virtual")) {
+                setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
+            }
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -523,10 +542,12 @@ class BrowserViewModel(
                         view.destroy()
                     }
                     webViewMap.remove(tabId)
+                    _webViewUpdateTrigger.value += 1
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                         val currentUrl = _tabs.value.find { it.id == tabId }?.url ?: "https://search.stormx.ninja"
                         val newView = getOrCreateWebView(tabId, context)
                         newView.loadUrl(currentUrl)
+                        _webViewUpdateTrigger.value += 1
                     }, 500)
                     return true
                 }

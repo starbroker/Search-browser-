@@ -154,6 +154,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val tabsList by viewModel.tabs.collectAsState()
     val currentUrlInput by viewModel.currentUrlInput.collectAsState()
     val settings by viewModel.settings.collectAsState()
+    val webViewTrigger by viewModel.webViewUpdateTrigger.collectAsState()
     
     val adsBlockedSession by viewModel.blockedAdsSession.collectAsState()
     val trackersBlockedSession by viewModel.blockedTrackersSession.collectAsState()
@@ -321,9 +322,14 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                         } catch (e: Throwable) {}
                                     },
                                     update = { container ->
+                                        // Read the trigger to force recomposition if webview engine crashes
+                                        webViewTrigger
                                         try {
-                                            if (container.childCount == 0) {
-                                                val webView = viewModel.getOrCreateWebView(activeTabId, container.context)
+                                            val webView = viewModel.getOrCreateWebView(activeTabId, container.context)
+                                            if (container.childCount == 0 || container.getChildAt(0) != webView) {
+                                                container.removeAllViews()
+                                                val parent = webView.parent as? android.view.ViewGroup
+                                                parent?.removeView(webView)
                                                 container.addView(webView)
                                             }
                                         } catch (e: Throwable) {
