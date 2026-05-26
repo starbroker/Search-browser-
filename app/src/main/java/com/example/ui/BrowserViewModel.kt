@@ -149,6 +149,33 @@ class BrowserViewModel(
     val showShieldPanel = MutableStateFlow(false)
     val showMenuDrawer = MutableStateFlow(false)
 
+    val tabPreviews = androidx.compose.runtime.mutableStateMapOf<Int, android.graphics.Bitmap>()
+
+    fun openTabsOverview() {
+        val tabId = _activeTabId.value
+        val webView = webViewMap[tabId]
+        if (webView != null) {
+            try {
+                val width = webView.width
+                val height = webView.height
+                if (width > 0 && height > 0) {
+                    val ratio = 0.25f
+                    val scaledWidth = (width * ratio).toInt()
+                    val scaledHeight = (height * ratio).toInt()
+                    val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                    val canvas = android.graphics.Canvas(bitmap)
+                    webView.draw(canvas)
+                    val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
+                    tabPreviews[tabId] = scaled
+                    if (scaled != bitmap) {
+                        bitmap.recycle()
+                    }
+                }
+            } catch(e: Exception) {}
+        }
+        showTabsOverview.value = true
+    }
+
     // Redirect proposal data
     data class AppRedirectProposal(
         val url: String,
@@ -156,6 +183,9 @@ class BrowserViewModel(
         val tabId: Int
     )
     val appRedirectProposal = MutableStateFlow<AppRedirectProposal?>(null)
+
+    data class ImageDownloadProposal(val url: String)
+    val imageDownloadProposal = MutableStateFlow<ImageDownloadProposal?>(null)
     val allowedInBrowserUrls = mutableSetOf<String>()
 
     // Live download speeds track
@@ -387,9 +417,42 @@ class BrowserViewModel(
     }
 
     // Get or Create dynamic WebView for stable multi-tab navigation
+    fun applyThemeToWebViews(isDark: Boolean) {
+        try {
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
+                for (webView in webViewMap.values) {
+                    androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, isDark)
+                }
+            } else if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
+                for (webView in webViewMap.values) {
+                    androidx.webkit.WebSettingsCompat.setForceDark(
+                        webView.settings,
+                        if (isDark) androidx.webkit.WebSettingsCompat.FORCE_DARK_ON else androidx.webkit.WebSettingsCompat.FORCE_DARK_OFF
+                    )
+                }
+            }
+        } catch (e: Exception) {}
+    }
+
     fun getOrCreateWebView(tabId: Int, context: Context): WebView {
         return webViewMap[tabId] ?: createWebViewInstance(tabId, context).also {
             webViewMap[tabId] = it
+            val isSystemDark = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+            val isDark = when(settings.value.themeMode) {
+                "DARK" -> true
+                "LIGHT" -> false
+                else -> isSystemDark
+            }
+            try {
+                if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
+                    androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(it.settings, isDark)
+                } else if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
+                    androidx.webkit.WebSettingsCompat.setForceDark(
+                        it.settings,
+                        if (isDark) androidx.webkit.WebSettingsCompat.FORCE_DARK_ON else androidx.webkit.WebSettingsCompat.FORCE_DARK_OFF
+                    )
+                }
+            } catch (e: Exception) {}
         }
     }
 
@@ -605,6 +668,18 @@ class BrowserViewModel(
             // Browser download listener to support file downloading
             setDownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->
                 triggerDownload(url, userAgent, contentDisposition, mimetype, contentLength, context)
+            }
+            
+            setOnLongClickListener {
+                val hitTestResult = this.hitTestResult
+                if (hitTestResult.type == android.webkit.WebView.HitTestResult.IMAGE_TYPE || hitTestResult.type == android.webkit.WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
+                    val imageUrl = hitTestResult.extra
+                    if (imageUrl != null) {
+                        imageDownloadProposal.value = ImageDownloadProposal(imageUrl)
+                        return@setOnLongClickListener true
+                    }
+                }
+                false
             }
         }
         
@@ -901,6 +976,30 @@ class BrowserViewModel(
             val destinationPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath + "/" + fileName
             val downloadId = repository.addDownload(url, fileName, destinationPath, contentLength, mimeType)
             
+            if (url.startsWith("data:")) {
+                try {
+                    val base64Data = url.substringAfter(",")
+                    val decodedBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                    val file = java.io.File(destinationPath)
+                    java.io.FileOutputStream(file).use { it.write(decodedBytes) }
+                    
+                    val initialItem = repository.downloadsFlow.first().find { it.id == downloadId }
+                    if (initialItem != null) {
+                        repository.updateDownload(initialItem.copy(status = "COMPLETED", downloadedBytes = decodedBytes.size.toLong(), totalBytes = decodedBytes.size.toLong()))
+                    }
+                    withContext(Dispatchers.Main) {
+                        val text = BrowserTranslator.translateText("Download completed: $fileName", settings.value.language)
+                        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    val initialItem = repository.downloadsFlow.first().find { it.id == downloadId }
+                    if (initialItem != null) {
+                        repository.updateDownload(initialItem.copy(status = "FAILED"))
+                    }
+                }
+                return@launch
+            }
+
             withContext(Dispatchers.Main) {
                 try {
                     val request = DownloadManager.Request(Uri.parse(url)).apply {
@@ -1036,6 +1135,66 @@ class BrowserViewModel(
     fun deleteDownload(id: Int) {
         viewModelScope.launch {
             repository.deleteDownload(id)
+        }
+    }
+
+    fun pauseDownload(id: Int, context: Context) {
+        viewModelScope.launch {
+            val dbItem = repository.downloadsFlow.first().find { it.id == id } ?: return@launch
+            try {
+                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                val cursor = dm.query(DownloadManager.Query())
+                var dmId: Long = -1
+                if (cursor != null) {
+                    while (cursor.moveToNext()) {
+                        val titleIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE)
+                        if (titleIndex != -1 && cursor.getString(titleIndex) == dbItem.fileName) {
+                            val idIndex = cursor.getColumnIndex(DownloadManager.COLUMN_ID)
+                            if (idIndex != -1) {
+                                dmId = cursor.getLong(idIndex)
+                                break
+                            }
+                        }
+                    }
+                    cursor.close()
+                }
+                if (dmId != -1L) {
+                    val values = android.content.ContentValues()
+                    values.put("control", 1) // 1 for pause
+                    context.contentResolver.update(android.net.Uri.parse("content://downloads/my_downloads/$dmId"), values, null, null)
+                    repository.updateDownload(dbItem.copy(status = "PAUSED"))
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
+    fun resumeDownload(id: Int, context: Context) {
+        viewModelScope.launch {
+            val dbItem = repository.downloadsFlow.first().find { it.id == id } ?: return@launch
+            try {
+                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                val cursor = dm.query(DownloadManager.Query())
+                var dmId: Long = -1
+                if (cursor != null) {
+                    while (cursor.moveToNext()) {
+                        val titleIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE)
+                        if (titleIndex != -1 && cursor.getString(titleIndex) == dbItem.fileName) {
+                            val idIndex = cursor.getColumnIndex(DownloadManager.COLUMN_ID)
+                            if (idIndex != -1) {
+                                dmId = cursor.getLong(idIndex)
+                                break
+                            }
+                        }
+                    }
+                    cursor.close()
+                }
+                if (dmId != -1L) {
+                    val values = android.content.ContentValues()
+                    values.put("control", 0) // 0 for resume
+                    context.contentResolver.update(android.net.Uri.parse("content://downloads/my_downloads/$dmId"), values, null, null)
+                    repository.updateDownload(dbItem.copy(status = "DOWNLOADING"))
+                }
+            } catch (e: Exception) {}
         }
     }
 

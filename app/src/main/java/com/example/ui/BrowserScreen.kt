@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -160,6 +161,16 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
 
+    val notificationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     // Observe State Flow values from ViewModel
     val isWebViewSupported by viewModel.isWebViewSupported.collectAsState()
     val activeTabId by viewModel.activeTabId.collectAsState()
@@ -236,6 +247,25 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
         else -> isSystemDark
     }
 
+    LaunchedEffect(isDark) {
+        viewModel.applyThemeToWebViews(isDark)
+    }
+
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) {
+        androidx.compose.runtime.SideEffect {
+            val window = (view.context as? android.app.Activity)?.window
+            if (window != null) {
+                androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDark
+                androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !isDark
+            }
+        }
+    }
+    
+    androidx.activity.compose.BackHandler(enabled = activeTab?.canGoBack == true && !showTabs && !showSettings && !showBookmarks && !showHistory && !showDownloads && !showMenuDrawer && !showShield) {
+        viewModel.activeTabGoBack(context)
+    }
+
     CompositionLocalProvider(LocalAppLanguage provides settings.language) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -249,7 +279,13 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 // Determine layout direction for navigation bar
                 val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
-                if (isTablet) {
+                val blurRadius by androidx.compose.animation.core.animateDpAsState(
+                    targetValue = if (isAnyDrawerOpen) 32.dp else 0.dp,
+                    animationSpec = androidx.compose.animation.core.tween(300),
+                    label = "baseBlur"
+                )
+                Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
+                    if (isTablet) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         AnimatedVisibility(
                             visible = !isSearchFocused,
@@ -493,6 +529,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                         }
                     }
                 }
+                } // End Blur Box
 
             // Overlay Sheets/Dialogs triggered dynamically
             AnimatedVisibility(
@@ -584,6 +621,75 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     activeFont = activeFont,
                     sessionAds = adsBlockedSession,
                     sessionTrackers = trackersBlockedSession
+                )
+            }
+
+            // Image download handler dialogue
+            val imageDownloadProposal by viewModel.imageDownloadProposal.collectAsState()
+            imageDownloadProposal?.let { proposal ->
+                AlertDialog(
+                    onDismissRequest = {
+                        viewModel.imageDownloadProposal.value = null
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                try {
+                                    val request = android.app.DownloadManager.Request(android.net.Uri.parse(proposal.url)).apply {
+                                        setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                        setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, android.webkit.URLUtil.guessFileName(proposal.url, null, null) ?: "image.jpg")
+                                    }
+                                    val dm = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+                                    dm.enqueue(request)
+                                    android.widget.Toast.makeText(context, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Download failed", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                viewModel.imageDownloadProposal.value = null
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Download Image", fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                viewModel.imageDownloadProposal.value = null
+                            }
+                        ) {
+                            Text("Cancel", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
+                    icon = {
+                        Icon(imageVector = Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    },
+                    title = {
+                        Text(
+                            text = "Save Image",
+                            fontFamily = activeFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = "Do you want to download this image to your device?",
+                            fontFamily = activeFont,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                    containerColor = glassCardColor(isDark),
+                    titleContentColor = if (isDark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+                    textContentColor = (if (isDark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF1C1C1E)).copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(24.dp)
                 )
             }
 
@@ -954,7 +1060,7 @@ fun PersistentNavigationBar(
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
-                    .clickable { viewModel.showTabsOverview.value = true }
+                    .clickable { viewModel.openTabsOverview() }
                     .padding(8.dp)
                     .testTag("tabs_button"),
                 contentAlignment = Alignment.Center
@@ -1016,7 +1122,7 @@ fun MenuDrawerSheet(
         else -> isSystemInDarkTheme()
     }
     val context = androidx.compose.ui.platform.LocalContext.current
-    val solidColor = if (isDark) Color(0xD91E1E23) else Color(0xD9FAFAFA)
+    val solidColor = if (isDark) Color(0xA61E1E23) else Color(0xA6FAFAFA)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1351,7 +1457,7 @@ fun ShieldDashboardSheet(
         "DARK" -> true
         else -> isSystemInDarkTheme()
     }
-    val solidColor = if (isDark) Color(0xD9141416) else Color(0xD9F5F6F8)
+    val solidColor = if (isDark) Color(0xA6141416) else Color(0xA6F5F6F8)
 
     ModalBottomSheet(
         onDismissRequest = { viewModel.showShieldPanel.value = false },
@@ -1755,6 +1861,7 @@ fun ShieldDashboardSheet(
 
 @Composable
 fun TabCard(
+    viewModel: BrowserViewModel,
     tab: TabState,
     isActive: Boolean,
     activeFont: FontFamily,
@@ -1865,12 +1972,41 @@ fun TabCard(
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = if (tab.url == "about:blank" || tab.url.isEmpty()) Icons.Default.Language else Icons.Default.Public,
-                    contentDescription = null,
-                    tint = (if (isDark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF0066FF)).copy(alpha = 0.12f),
-                    modifier = Modifier.size(56.dp)
-                )
+                var bitmap by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+                val context = androidx.compose.ui.platform.LocalContext.current
+                
+                androidx.compose.runtime.LaunchedEffect(tab.id) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        try {
+                            val webView = viewModel.getOrCreateWebView(tab.id, context)
+                            val width = if (webView.width > 0) webView.width else 800
+                            val height = if (webView.height > 0) webView.height else 1200
+                            val bm = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                            val canvas = android.graphics.Canvas(bm)
+                            webView.draw(canvas)
+                            bitmap = bm.asImageBitmap()
+                        } catch (e: Exception) {
+                            // Ignored
+                        }
+                    }
+                }
+                
+                if (bitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = bitmap!!,
+                        contentDescription = "Page Preview",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        alignment = Alignment.TopCenter
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (tab.url == "about:blank" || tab.url.isEmpty()) Icons.Default.Language else Icons.Default.Public,
+                        contentDescription = null,
+                        tint = (if (isDark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF0066FF)).copy(alpha = 0.12f),
+                        modifier = Modifier.size(56.dp)
+                    )
+                }
             }
         }
     }
@@ -1913,7 +2049,7 @@ fun TabsOverviewPage(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .colorOSGradientBackground(isDark),
+            .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
         val navBar: @Composable () -> Unit = {
@@ -2262,12 +2398,22 @@ fun TabsOverviewPage(
                                             .fillMaxWidth(),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = if (tab.url == "about:blank" || tab.url.isEmpty()) Icons.Default.Language else Icons.Default.Public,
-                                            contentDescription = null,
-                                            tint = (if (isDark) Color.White else Color(0xFF0066FF)).copy(alpha = 0.12f),
-                                            modifier = Modifier.size(56.dp)
-                                        )
+                                        val previewBitmap = viewModel.tabPreviews[tab.id]
+                                        if (previewBitmap != null) {
+                                            androidx.compose.foundation.Image(
+                                                bitmap = previewBitmap.asImageBitmap(),
+                                                contentDescription = "Tab Preview",
+                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = if (tab.url == "about:blank" || tab.url.isEmpty()) Icons.Default.Language else Icons.Default.Public,
+                                                contentDescription = null,
+                                                tint = (if (isDark) Color.White else Color(0xFF0066FF)).copy(alpha = 0.12f),
+                                                modifier = Modifier.size(56.dp)
+                                            )
+                                        }
                                     } // closes internal Box
                                 } // closes Column
                             } // closes Surface
@@ -2352,6 +2498,7 @@ fun TabsOverviewPage(
                             items(filteredTabs, key = { it.id }) { tab ->
                                 Box(modifier = Modifier) {
                                     TabCard(
+                                        viewModel = viewModel,
                                         tab = tab,
                                         isActive = tab.id == activeTabId,
                                         activeFont = activeFont,
@@ -2483,7 +2630,7 @@ fun SettingsSheet(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .colorOSGradientBackground(isDark),
+            .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
         Column(
@@ -3315,7 +3462,7 @@ fun SettingsSheet(
                             modifier = Modifier
                                 .clip(CircleShape)
                                 .clickable {
-                                    viewModel.showTabsOverview.value = true
+                                    viewModel.openTabsOverview()
                                     viewModel.showSettings.value = false
                                 }
                                 .padding(8.dp),
@@ -3768,7 +3915,7 @@ fun BookmarksPage(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .colorOSGradientBackground(isDark),
+            .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -4033,7 +4180,7 @@ fun BookmarksPage(
                     modifier = Modifier
                         .clip(CircleShape)
                         .clickable {
-                            viewModel.showTabsOverview.value = true
+                            viewModel.openTabsOverview()
                             onDismiss()
                         }
                         .padding(8.dp),
@@ -4133,7 +4280,7 @@ fun HistoryPage(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .colorOSGradientBackground(isDark),
+            .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -4394,7 +4541,7 @@ fun HistoryPage(
                     modifier = Modifier
                         .clip(CircleShape)
                         .clickable {
-                            viewModel.showTabsOverview.value = true
+                            viewModel.openTabsOverview()
                             onDismiss()
                         }
                         .padding(8.dp),
@@ -4453,16 +4600,16 @@ fun DownloadsPage(
     var selectedTab by remember { mutableStateOf(0) }
     
     // Theme Colors
-    val bgColor = if (isDark) Color(0xFF121214) else Color(0xFFFDFBFB)
-    val glassBg = if (isDark) Color(0xA61E1E23) else Color(0xFFEEEEEE)
-    val glassBorder = if (isDark) Color(0x1AFFFFFF) else Color(0xFFE0E0E0)
+    val bgColor = if (isDark) Color(0xFF121214) else Color(0xFFF2F2F7)
+    val glassBg = if (isDark) Color(0xA61E1E23) else Color(0xFFE5E5EA)
+    val glassBorder = if (isDark) Color(0x1AFFFFFF) else Color(0xFFD1D1D6)
     val textMain = if (isDark) Color(0xFFF5F5F7) else Color(0xFF1C1C1E)
     val textMuted = if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73)
     val accentColor = if (isDark) Color(0xFF4D94FF) else Color(0xFF0066FF)
     val successColor = if (isDark) Color(0xFF30D158) else Color(0xFF34C759)
     val dangerColor = if (isDark) Color(0xFFFF453A) else Color(0xFFFF3B30)
-    val itemBg = if (isDark) Color(0x0DFFFFFF) else Color.White
-    val itemBorder = if (isDark) Color(0x1AFFFFFF) else Color(0xFFE0E0E0)
+    val itemBg = if (isDark) Color(0x0DFFFFFF) else Color(0xFFFFFFFF)
+    val itemBorder = if (isDark) Color(0x1AFFFFFF) else Color(0xFFC7C7CC)
 
     val allDownloads by viewModel.downloads.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
@@ -4483,13 +4630,17 @@ fun DownloadsPage(
 
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
-    Box(
+    Surface(
         modifier = Modifier
             .fillMaxSize()
-            .background(bgColor)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .colorOSGradientBackground(isDark, alpha = 0.65f),
+        color = Color.Transparent
     ) {
-        // Content
-        Column(
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Content
+            Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(
@@ -4603,7 +4754,7 @@ fun DownloadsPage(
                                         }
                                     }
                                     .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -4620,9 +4771,8 @@ fun DownloadsPage(
                                     if (isCompleted || downloadItem.status == "FAILED") {
                                         Text("${formatBytes(downloadItem.totalBytes)} • ${downloadItem.status}", fontSize = 13.sp, color = textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = activeFont)
                                     } else {
-                                        Row {
-                                            Text(downloadItem.status, fontSize = 13.sp, color = textMuted, fontFamily = activeFont)
-                                        }
+                                        val speed = viewModel.downloadSpeeds[downloadItem.id] ?: "Active"
+                                        Text("${downloadItem.status} • $speed", fontSize = 13.sp, color = textMuted, fontFamily = activeFont)
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Box(
                                             modifier = Modifier
@@ -4651,6 +4801,33 @@ fun DownloadsPage(
                                         onDismissRequest = { isMenuExpanded = false },
                                         modifier = Modifier.background(glassBg)
                                     ) {
+                                        if (downloadItem.status == "DOWNLOADING" || downloadItem.status == "PENDING") {
+                                            DropdownMenuItem(
+                                                text = { Text("Pause", color = textMain, fontFamily = activeFont) },
+                                                onClick = {
+                                                    isMenuExpanded = false
+                                                    viewModel.pauseDownload(downloadItem.id, context)
+                                                }
+                                            )
+                                        }
+                                        if (downloadItem.status == "PAUSED") {
+                                            DropdownMenuItem(
+                                                text = { Text("Unpause", color = textMain, fontFamily = activeFont) },
+                                                onClick = {
+                                                    isMenuExpanded = false
+                                                    viewModel.resumeDownload(downloadItem.id, context)
+                                                }
+                                            )
+                                        }
+                                        if (downloadItem.status == "COMPLETED") {
+                                            DropdownMenuItem(
+                                                text = { Text("Share file", color = textMain, fontFamily = activeFont) },
+                                                onClick = {
+                                                    isMenuExpanded = false
+                                                    shareDownloadedFile(context, downloadItem.filePath, downloadItem.mimeType)
+                                                }
+                                            )
+                                        }
                                         DropdownMenuItem(
                                             text = { Text("Delete file", color = dangerColor, fontFamily = activeFont) },
                                             onClick = {
@@ -4755,6 +4932,7 @@ fun DownloadsPage(
             }
         }
     }
+    }
 }
 
 // Select suitable file icon type based on suffix safely using core material icons
@@ -4769,18 +4947,57 @@ fun getFileTypeIcon(fileName: String, status: String): ImageVector {
     }
 }
 
+fun getResolvedMimeType(filePath: String, fallbackMimeType: String?): String {
+    val extension = filePath.substringAfterLast('.', "").lowercase()
+    return when (extension) {
+        "apk" -> "application/vnd.android.package-archive"
+        "jpg", "jpeg", "png", "gif", "webp", "bmp" -> "image/*"
+        "mp4", "mkv", "avi", "webm", "mov", "ts" -> "video/*"
+        "mp3", "wav", "m4a", "ogg", "flac", "aac" -> "audio/*"
+        else -> fallbackMimeType ?: "*/*"
+    }
+}
+
 // Launches system level intents to explore / open completed files safely
 fun openDownloadedFile(context: android.content.Context, filePath: String, mimeType: String?) {
     try {
-        val uri = android.net.Uri.parse(filePath)
+        val file = java.io.File(filePath)
+        if (!file.exists()) {
+            android.widget.Toast.makeText(context, "File not found: $filePath", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val resolvedMimeType = getResolvedMimeType(filePath, mimeType)
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeType ?: "*/*")
+            setDataAndType(uri, resolvedMimeType)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
     } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "Cannot direct launch: Saved file at $filePath", android.widget.Toast.LENGTH_LONG).show()
+        android.widget.Toast.makeText(context, "Cannot open file: $filePath", android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
+fun shareDownloadedFile(context: android.content.Context, filePath: String, mimeType: String?) {
+    try {
+        val file = java.io.File(filePath)
+        if (!file.exists()) {
+            android.widget.Toast.makeText(context, "File not found: $filePath", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val resolvedMimeType = getResolvedMimeType(filePath, mimeType)
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = resolvedMimeType
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = android.content.Intent.createChooser(intent, "Share file")
+        chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooser)
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Cannot share file: $filePath", android.widget.Toast.LENGTH_LONG).show()
     }
 }
 
@@ -4914,12 +5131,12 @@ fun glassBorderColor(isDark: Boolean) = if (isDark) {
     Color(0x80FFFFFF) // rgba(255, 255, 255, 0.5)
 }
 
-fun Modifier.colorOSGradientBackground(isDark: Boolean): Modifier = this.drawBehind {
+fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Modifier = this.drawBehind {
     val size = this.size
     // 1. Base Gradient
     val baseBrush = if (isDark) {
         Brush.linearGradient(
-            colors = listOf(Color(0xFF121214), Color(0xFF1C1C1E)),
+            colors = listOf(Color(0xFF0F111A), Color(0xFF08090D)),
             start = androidx.compose.ui.geometry.Offset(0f, 0f),
             end = androidx.compose.ui.geometry.Offset(size.width, size.height)
         )
@@ -4930,32 +5147,34 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean): Modifier = this.drawBeh
             end = androidx.compose.ui.geometry.Offset(size.width, size.height)
         )
     }
-    drawRect(brush = baseBrush)
+    drawRect(brush = baseBrush, alpha = alpha)
 
     // 2. Top-Right Orb
-    val topRightColor = if (isDark) Color(0xFF2A2A35) else Color(0xFFE2D1C3)
+    val topRightColor = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.12f) else Color(0xFFE2D1C3)
     val topRightCenter = androidx.compose.ui.geometry.Offset(size.width, 0f)
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(topRightColor, Color.Transparent),
             center = topRightCenter,
-            radius = size.width * 0.7f
+            radius = size.width * 0.8f
         ),
         center = topRightCenter,
-        radius = size.width * 0.7f
+        radius = size.width * 0.8f,
+        alpha = alpha
     )
 
     // 3. Bottom-Left Orb
-    val bottomLeftColor = if (isDark) Color(0xFF1A202C) else Color(0xFFD4E4F9)
+    val bottomLeftColor = if (isDark) Color(0xFF818CF8).copy(alpha = 0.12f) else Color(0xFFD4E4F9)
     val bottomLeftCenter = androidx.compose.ui.geometry.Offset(0f, size.height)
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(bottomLeftColor, Color.Transparent),
             center = bottomLeftCenter,
-            radius = size.width * 0.7f
+            radius = size.width * 0.8f
         ),
         center = bottomLeftCenter,
-        radius = size.width * 0.7f
+        radius = size.width * 0.8f,
+        alpha = alpha
     )
 }
 
