@@ -186,6 +186,13 @@ class BrowserViewModel(
 
     data class ImageDownloadProposal(val url: String)
     val imageDownloadProposal = MutableStateFlow<ImageDownloadProposal?>(null)
+    
+    data class PermissionProposal(
+        val domain: String,
+        val request: android.webkit.PermissionRequest,
+        val resourcesNeeded: List<String>
+    )
+    val permissionRequestProposal = MutableStateFlow<PermissionProposal?>(null)
     val allowedInBrowserUrls = mutableSetOf<String>()
 
     // Live download speeds track
@@ -633,22 +640,29 @@ class BrowserViewModel(
                     val cameraAllowed = perm?.cameraAllowed ?: false
                     val micAllowed = perm?.microphoneAllowed ?: false
                     
-                    val grantedResources = mutableListOf<String>()
+                    val autoGrantedResources = mutableListOf<String>()
+                    val resourcesNeeded = mutableListOf<String>()
                     for (res in request.resources) {
                         if (res == android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE) {
                             if (cameraAllowed) {
-                                grantedResources.add(res)
+                                autoGrantedResources.add(res)
+                            } else {
+                                resourcesNeeded.add(res)
                             }
                         } else if (res == android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE) {
                             if (micAllowed) {
-                                grantedResources.add(res)
+                                autoGrantedResources.add(res)
+                            } else {
+                                resourcesNeeded.add(res)
                             }
                         } else {
-                            grantedResources.add(res)
+                            autoGrantedResources.add(res)
                         }
                     }
-                    if (grantedResources.isNotEmpty()) {
-                        request.grant(grantedResources.toTypedArray())
+                    if (resourcesNeeded.isNotEmpty()) {
+                        permissionRequestProposal.value = PermissionProposal(domain, request, resourcesNeeded)
+                    } else if (autoGrantedResources.isNotEmpty()) {
+                        request.grant(autoGrantedResources.toTypedArray())
                     } else {
                         request.deny()
                     }
@@ -701,6 +715,24 @@ class BrowserViewModel(
         } catch (e: Exception) {
             ""
         }
+    }
+    
+    fun handlePermissionProposal(grant: Boolean) {
+        val proposal = permissionRequestProposal.value ?: return
+        if (grant) {
+            try {
+                proposal.request.grant(proposal.resourcesNeeded.toTypedArray())
+            } catch (e: Exception) {}
+            val needsCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+            val needsMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+            if (needsCamera) toggleWebsiteCamera(proposal.domain, true)
+            if (needsMic) toggleWebsiteMicrophone(proposal.domain, true)
+        } else {
+            try {
+                proposal.request.deny()
+            } catch (e: Exception) {}
+        }
+        permissionRequestProposal.value = null
     }
 
     private fun isTrackerHost(host: String): Boolean {
@@ -961,7 +993,7 @@ class BrowserViewModel(
     }
 
     // Download Handler
-    private fun triggerDownload(
+    fun triggerDownload(
         url: String,
         userAgent: String?,
         contentDisposition: String?,
@@ -1098,8 +1130,10 @@ class BrowserViewModel(
                         }
                     }
     
-                    val startText = BrowserTranslator.translateText("Download started: $fileName", settings.value.language)
-                    Toast.makeText(context, startText, Toast.LENGTH_LONG).show()
+                    withContext(Dispatchers.Main) {
+                        val startText = BrowserTranslator.translateText("Download started: $fileName", settings.value.language)
+                        Toast.makeText(context, startText, Toast.LENGTH_LONG).show()
+                    }
     
                 } catch (e: Exception) {
                     viewModelScope.launch {
@@ -1110,9 +1144,9 @@ class BrowserViewModel(
                         }
                     }
                     withContext(Dispatchers.Main) {
+                        val failText = BrowserTranslator.translateText("Download failed: ${e.localizedMessage}", settings.value.language)
+                        Toast.makeText(context, failText, Toast.LENGTH_LONG).show()
                     }
-                    val failText = BrowserTranslator.translateText("Download failed: ${e.localizedMessage}", settings.value.language)
-                    Toast.makeText(context, failText, Toast.LENGTH_LONG).show()
                 }
             }
         }

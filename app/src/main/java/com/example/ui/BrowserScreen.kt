@@ -191,6 +191,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val showDownloads by viewModel.showDownloads.collectAsState()
     val showShield by viewModel.showShieldPanel.collectAsState()
     val showMenuDrawer by viewModel.showMenuDrawer.collectAsState()
+    val imageDownloadProposal by viewModel.imageDownloadProposal.collectAsState()
     
     val isAnyDrawerOpen = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showShield || showMenuDrawer
 
@@ -625,72 +626,149 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             }
 
             // Image download handler dialogue
-            val imageDownloadProposal by viewModel.imageDownloadProposal.collectAsState()
-            imageDownloadProposal?.let { proposal ->
-                AlertDialog(
-                    onDismissRequest = {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = imageDownloadProposal != null,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                imageDownloadProposal?.let { proposal ->
+                    androidx.activity.compose.BackHandler {
                         viewModel.imageDownloadProposal.value = null
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                try {
-                                    val request = android.app.DownloadManager.Request(android.net.Uri.parse(proposal.url)).apply {
-                                        setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                                        setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, android.webkit.URLUtil.guessFileName(proposal.url, null, null) ?: "image.jpg")
-                                    }
-                                    val dm = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
-                                    dm.enqueue(request)
-                                    android.widget.Toast.makeText(context, "Download started", android.widget.Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    android.widget.Toast.makeText(context, "Download failed", android.widget.Toast.LENGTH_SHORT).show()
-                                }
-                                viewModel.imageDownloadProposal.value = null
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(if (isDark) Color(0x66000000) else Color(0x33000000))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { viewModel.imageDownloadProposal.value = null }
                             ),
-                            shape = RoundedCornerShape(12.dp)
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = {} // Consume click to prevent dismiss
+                                ),
+                            shape = RoundedCornerShape(28.dp),
+                            color = Color.Transparent,
                         ) {
-                            Text("Download Image", fontFamily = activeFont, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(
-                            onClick = {
-                                viewModel.imageDownloadProposal.value = null
+                            Box(
+                                modifier = Modifier
+                                    .background(glassCardColor(isDark))
+                                    .border(1.dp, if (isDark) Color(0x4DFFFFFF) else Color(0x80FFFFFF), RoundedCornerShape(28.dp))
+                                    .padding(24.dp)
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .background(
+                                                color = if (isDark) Color(0x1AFFFFFF) else Color(0x1A000000),
+                                                shape = androidx.compose.foundation.shape.CircleShape
+                                            )
+                                            .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0x1A000000), androidx.compose.foundation.shape.CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = "Download Image",
+                                            tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                                            modifier = Modifier.size(32.dp)
+                                        )
+                                    }
+                                    
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Save Image",
+                                            fontFamily = activeFont,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 22.sp,
+                                            color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Text(
+                                            text = "Do you want to download this image to your device?",
+                                            fontFamily = activeFont,
+                                            fontSize = 15.sp,
+                                            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(52.dp)
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(if (isDark) Color(0x1AFFFFFF) else Color(0x1A000000))
+                                                .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0x1A000000), RoundedCornerShape(16.dp))
+                                                .clickable { viewModel.imageDownloadProposal.value = null },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "Cancel",
+                                                fontFamily = activeFont,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                                                fontSize = 16.sp
+                                            )
+                                        }
+                                        
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(52.dp)
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(Color(0xFF0066FF))
+                                                .clickable {
+                                                    try {
+                                                        viewModel.triggerDownload(
+                                                            url = proposal.url,
+                                                            userAgent = null,
+                                                            contentDisposition = null,
+                                                            mimeType = "image/*",
+                                                            contentLength = 0L,
+                                                            context = context
+                                                        )
+                                                    } catch (e: Exception) {
+                                                        android.widget.Toast.makeText(context, "Download failed", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                    viewModel.imageDownloadProposal.value = null
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "Download",
+                                                fontFamily = activeFont,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                fontSize = 16.sp
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                        ) {
-                            Text("Cancel", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                    },
-                    icon = {
-                        Icon(imageVector = Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    },
-                    title = {
-                        Text(
-                            text = "Save Image",
-                            fontFamily = activeFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = "Do you want to download this image to your device?",
-                            fontFamily = activeFont,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    },
-                    containerColor = glassCardColor(isDark),
-                    titleContentColor = if (isDark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF1C1C1E),
-                    textContentColor = (if (isDark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF1C1C1E)).copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(24.dp)
-                )
+                    }
+                }
             }
 
             // High-fidelity social redirects handler dialogue
@@ -755,6 +833,64 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             fontFamily = activeFont,
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    shape = RoundedCornerShape(24.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 6.dp
+                )
+            }
+
+            val permissionProposal by viewModel.permissionRequestProposal.collectAsState()
+            permissionProposal?.let { proposal ->
+                val involvesCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+                val involvesMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+
+                AlertDialog(
+                    onDismissRequest = { viewModel.handlePermissionProposal(false) },
+                    confirmButton = {
+                        Button(
+                            onClick = { viewModel.handlePermissionProposal(true) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Allow", fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.handlePermissionProposal(false) }) {
+                            Text("Deny", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = if (involvesCamera && involvesMic) Icons.Default.Videocam else if (involvesCamera) Icons.Default.Videocam else Icons.Default.Mic,
+                            contentDescription = "Permission Request",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    },
+                    title = {
+                        val requestedResourceText = if (involvesCamera && involvesMic) "Camera & Microphone" else if (involvesCamera) "Camera" else "Microphone"
+                        Text(
+                            text = "Allow $requestedResourceText?",
+                            fontFamily = activeFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = "${proposal.domain} wants to use your device's features.",
+                            fontFamily = activeFont,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
                         )
                     },
                     shape = RoundedCornerShape(24.dp),
@@ -1430,7 +1566,9 @@ fun ShieldDashboardSheet(
     sessionAds: Int,
     sessionTrackers: Int
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val listTabs by viewModel.tabs.collectAsState()
+    val listBookmarks by viewModel.bookmarks.collectAsState()
     val activId by viewModel.activeTabId.collectAsState()
     val permissionsList by viewModel.websitePermissions.collectAsState()
     
@@ -1566,6 +1704,53 @@ fun ShieldDashboardSheet(
             }
 
             Spacer(modifier = Modifier.height(20.dp))
+
+            // Bookmark Quick Action
+            Row(
+                 modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
+                    .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
+                    .clickable { 
+                        if (currentActiveTab != null && currentActiveTab.url.isNotEmpty() && !currentActiveTab.url.startsWith("https://search.")) {
+                            viewModel.toggleBookmark(currentActiveTab.url, currentActiveTab.title)
+                        } else {
+                            android.widget.Toast.makeText(context, "Cannot bookmark this page", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val isBookmarked = currentActiveTab != null && listBookmarks.any { it.url == currentActiveTab.url }
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = "Bookmark",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(if (isBookmarked) "Saved to Bookmarks" else "Add to Bookmarks", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(
+                        text = "Access this page later",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Individual Toggle Switches
             Column(
@@ -4006,15 +4191,28 @@ fun BookmarksPage(
                         fontSize = 28.sp,
                         color = if (isDark) Color.White else Color(0xFF1C1C1E)
                     )
+                    
+                    val activeId by viewModel.activeTabId.collectAsState()
+                    val currentTab = tabsList.find { it.id == activeId }
+                    val currentUrl = currentTab?.url ?: ""
+                    val currentTitle = currentTab?.title ?: ""
+                    val isBookmarked = bookmarksList.any { it.url == currentUrl }
+                    
                     IconButton(
-                        onClick = { /* Search Trigger Decoration */ },
+                        onClick = { 
+                            if (currentUrl.isNotEmpty() && !currentUrl.startsWith("https://search.")) {
+                                viewModel.toggleBookmark(currentUrl, currentTitle)
+                            } else {
+                                android.widget.Toast.makeText(context, "Cannot bookmark this page", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search Option",
+                            imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            contentDescription = "Add current tab to Bookmark",
                             tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
