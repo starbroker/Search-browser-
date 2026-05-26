@@ -388,35 +388,22 @@ class BrowserViewModel(
 
     // Get or Create dynamic WebView for stable multi-tab navigation
     fun getOrCreateWebView(tabId: Int, context: Context): WebView {
-        val webView = webViewMap[tabId] ?: createWebViewInstance(tabId, context).also {
+        return webViewMap[tabId] ?: createWebViewInstance(tabId, context).also {
             webViewMap[tabId] = it
         }
-        // Safely force-remove from any stale parent before Compose attempts to re-attach
-        val parent = webView.parent as? android.view.ViewGroup
-        if (parent != null) {
-            try {
-                webView.clearFocus()
-                parent.removeView(webView)
-            } catch (e: Throwable) {}
-        }
-        return webView
     }
 
     private fun createWebViewInstance(tabId: Int, context: Context): WebView {
-        // Use applicationContext to avoid leaking Activity and surface contexts
-        val appCtx = context.applicationContext
-
+        
         try {
-            val wasmDir = java.io.File(appCtx.cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
-            val jsDir = java.io.File(appCtx.cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
+            val wasmDir = java.io.File(context.cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
+            val jsDir = java.io.File(context.cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
             if (!wasmDir.exists()) wasmDir.mkdirs()
             if (!jsDir.exists()) jsDir.mkdirs()
         } catch (e: Exception) {}
         
-        val webView = WebView(appCtx).apply {
-            val finger = android.os.Build.FINGERPRINT.lowercase()
-            val model = android.os.Build.MODEL.lowercase()
-            if (finger.contains("generic") || finger.contains("vbox") || model.contains("emulator") || model.contains("sdk") || model.contains("gphone") || model.contains("virtual")) {
+        val webView = WebView(context).apply {
+            if (isEmulator()) {
                 setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
             }
             layoutParams = android.view.ViewGroup.LayoutParams(
@@ -464,7 +451,12 @@ class BrowserViewModel(
                     if (url.startsWith("http://") || url.startsWith("https://")) {
                         return false
                     }
-                    // Prevent crash on app intents/stores
+                    try {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                        context.startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                     return true
                 }
 
@@ -545,7 +537,7 @@ class BrowserViewModel(
                     _webViewUpdateTrigger.value += 1
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                         val currentUrl = _tabs.value.find { it.id == tabId }?.url ?: "https://search.stormx.ninja"
-                        val newView = getOrCreateWebView(tabId, appCtx)
+                        val newView = getOrCreateWebView(tabId, context)
                         newView.loadUrl(currentUrl)
                         _webViewUpdateTrigger.value += 1
                     }, 500)
@@ -715,6 +707,12 @@ class BrowserViewModel(
 
         _currentUrlInput.value = formattedUrl
         val activeId = _activeTabId.value
+        
+        if (activeId == -1) {
+            addNewTab(formattedUrl)
+            return
+        }
+
         if (_isWebViewSupported.value == false) {
             viewModelScope.launch {
                 updateTabProperties(activeId, url = formattedUrl, isLoading = true, progress = 20)
@@ -734,7 +732,7 @@ class BrowserViewModel(
             return
         }
         try {
-            val webView = getOrCreateWebView(activeId, context)
+            val webView = webViewMap[activeId] ?: getOrCreateWebView(activeId, context)
             webView.loadUrl(formattedUrl)
         } catch (e: Throwable) {
             markWebViewUnsupported()
@@ -822,7 +820,7 @@ class BrowserViewModel(
         }
     }
 
-    fun updateSearchEngine(engine: String) {
+    fun updateSearchEngine(engine: String, context: android.content.Context) {
         viewModelScope.launch {
             val current = repository.getSettings()
             val newHomeUrl = when (engine) {
@@ -833,7 +831,14 @@ class BrowserViewModel(
                 "search.stormx.ninja" -> "https://search.stormx.ninja/"
                 else -> "https://search.stormx.ninja/"
             }
-            repository.saveSettings(current.copy(searchEngine = engine, homeUrl = newHomeUrl))
+            // Update the stateflow directly to prevent the race condition
+            // where navigateActiveTab uses the OLD searchEngine since repository flow hasn't emitted yet.
+            val updatedSettings = current.copy(searchEngine = engine, homeUrl = newHomeUrl)
+            repository.saveSettings(updatedSettings)
+            
+            // Give Flow a tiny delay to update Or you can just update the home page
+            kotlinx.coroutines.delay(50)
+            navigateActiveTab(newHomeUrl, context)
         }
     }
 
@@ -909,13 +914,6 @@ class BrowserViewModel(
     
                     val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                     val dmId = downloadManager.enqueue(request)
-                    
-                    showIosNotification(
-                        title = "Download Started",
-                        message = "Starting download for $fileName",
-                        type = "DOWNLOAD_START",
-                        subtext = fileName
-                    )
     
                     // Polling tracking job in IO coroutine to monitor raw bytes and compute speed in real-time
                     viewModelScope.launch(Dispatchers.IO) {
@@ -965,24 +963,12 @@ class BrowserViewModel(
                                     DownloadManager.STATUS_SUCCESSFUL -> {
                                         isRunning = false
                                         withContext(Dispatchers.Main) {
-                                            showIosNotification(
-                                                title = "Download Completed",
-                                                message = "Successfully saved: $fileName",
-                                                type = "DOWNLOAD_COMPLETED",
-                                                subtext = fileName
-                                            )
                                         }
                                         "COMPLETED"
                                     }
                                     DownloadManager.STATUS_FAILED -> {
                                         isRunning = false
                                         withContext(Dispatchers.Main) {
-                                            showIosNotification(
-                                                title = "Download Failed",
-                                                message = "Failed to download: $fileName",
-                                                type = "DOWNLOAD_FAILED",
-                                                subtext = fileName
-                                            )
                                         }
                                         "FAILED"
                                     }
@@ -1025,12 +1011,6 @@ class BrowserViewModel(
                         }
                     }
                     withContext(Dispatchers.Main) {
-                        showIosNotification(
-                            title = "Download Failed",
-                            message = e.localizedMessage ?: "Unknown error occurred",
-                            type = "DOWNLOAD_FAILED",
-                            subtext = fileName
-                        )
                     }
                     val failText = BrowserTranslator.translateText("Download failed: ${e.localizedMessage}", settings.value.language)
                     Toast.makeText(context, failText, Toast.LENGTH_LONG).show()

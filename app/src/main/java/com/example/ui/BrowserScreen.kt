@@ -1,5 +1,10 @@
 @file:Suppress("DEPRECATION")
 package com.example.ui
+
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.res.painterResource
  
 import androidx.compose.foundation.isSystemInDarkTheme
 import android.webkit.WebView
@@ -18,6 +23,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +40,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -39,6 +49,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -161,6 +173,16 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val downloadsList by viewModel.downloads.collectAsState()
     val iosNotifications by viewModel.iosNotifications.collectAsState()
 
+    val showTabs by viewModel.showTabsOverview.collectAsState()
+    val showSettings by viewModel.showSettings.collectAsState()
+    val showBookmarks by viewModel.showBookmarks.collectAsState()
+    val showHistory by viewModel.showHistory.collectAsState()
+    val showDownloads by viewModel.showDownloads.collectAsState()
+    val showShield by viewModel.showShieldPanel.collectAsState()
+    val showMenuDrawer by viewModel.showMenuDrawer.collectAsState()
+    
+    val isAnyDrawerOpen = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showShield || showMenuDrawer
+
     var isSearchFocused by remember { mutableStateOf(false) }
 
     var lastActiveDownloadId by remember { mutableStateOf<Int?>(null) }
@@ -224,150 +246,255 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 .fillMaxSize()
                 .colorOSGradientBackground(isDark)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(bottom = innerPadding.calculateBottomPadding() / 4)
-            ) {
-                // URL and Shield Header bar
-                BrowserHeader(
-                    urlInput = currentUrlInput,
-                    activeTab = activeTab,
-                    density = currentDensity,
-                    fontFamily = activeFont,
-                    settings = settings,
-                    isFocused = isSearchFocused,
-                    onFocusChange = { isSearchFocused = it },
-                    onUrlChange = { viewModel.setUrlInput(it) },
-                    onNavigate = { viewModel.navigateActiveTab(currentUrlInput, context); focusManager.clearFocus() },
-                    onRefresh = { viewModel.activeTabRefresh(context) },
-                    viewModel = viewModel
-                )
+                // Determine layout direction for navigation bar
+                val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
-                // ColorOS 16 Dropdown
-                AnimatedVisibility(
-                    visible = isSearchFocused && currentUrlInput.isNotEmpty() && !currentUrlInput.startsWith("http"),
-                    enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
-                    exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
-                ) {
-                    ColorOSSearchSuggestionsOverlay(
-                        query = currentUrlInput,
-                        isDark = isDark,
-                        fontFamily = activeFont,
-                        onSuggestionClick = { suggestion ->
-                            viewModel.setUrlInput(suggestion)
-                            viewModel.navigateActiveTab(suggestion, context)
-                            focusManager.clearFocus()
-                        }
-                    )
-                }
-
-                // Dynamic Progress Bar Indicator (Aquamorphic Fluid Design Accent)
-                AnimatedVisibility(
-                    visible = activeTab?.isLoading == true,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    LinearProgressIndicator(
-                        progress = { (activeTab?.progress ?: 0) / 100f },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                }
-
-                // WebView canvas wrapper (Fully floating card style)
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(glassCardColor(isDark))
-                        .border(
-                            width = 1.dp,
-                            color = glassBorderColor(isDark),
-                            shape = RoundedCornerShape(20.dp)
-                        )
-                ) {
-                    if (activeTabId != -1) {
-                        if (isWebViewSupported == false) {
-                            FallbackBrowserSimulator(
+                if (isTablet) {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        AnimatedVisibility(
+                            visible = !isSearchFocused,
+                            enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
+                            exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
+                            modifier = Modifier.align(Alignment.CenterVertically)
+                        ) {
+                            PersistentNavigationBar(
                                 viewModel = viewModel,
                                 activeTab = activeTab,
-                                isDark = isDark,
-                                fontFamily = activeFont,
-                                onNavigate = { targetUrl ->
-                                    viewModel.navigateActiveTab(targetUrl, context)
-                                }
+                                tabsCount = tabsList.size,
+                                density = currentDensity,
+                                scope = scope,
+                                activeFont = activeFont
                             )
-                        } else if (isWebViewSupported == true) {
-                            key(activeTabId) {
-                                AndroidView<android.widget.FrameLayout>(
-                                    factory = { ctx ->
-                                        val container = android.widget.FrameLayout(ctx)
-                                        try {
-                                            val webView = viewModel.getOrCreateWebView(activeTabId, ctx)
-                                            container.addView(webView)
-                                        } catch (e: Throwable) {
-                                            viewModel.markWebViewUnsupported()
-                                        }
-                                        container
-                                    },
-                                    onRelease = { container ->
-                                        try {
-                                            container.removeAllViews()
-                                        } catch (e: Throwable) {}
-                                    },
-                                    update = { container ->
-                                        // Read the trigger to force recomposition if webview engine crashes
-                                        webViewTrigger
-                                        try {
-                                            val webView = viewModel.getOrCreateWebView(activeTabId, container.context)
-                                            if (container.childCount == 0 || container.getChildAt(0) != webView) {
-                                                container.removeAllViews()
-                                                val parent = webView.parent as? android.view.ViewGroup
-                                                parent?.removeView(webView)
-                                                container.addView(webView)
-                                            }
-                                        } catch (e: Throwable) {
-                                            viewModel.markWebViewUnsupported()
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxSize()
+                        }
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .statusBarsPadding()
+                                .navigationBarsPadding()
+                                .padding(bottom = innerPadding.calculateBottomPadding() / 4)
+                        ) {
+                            BrowserHeader(
+                                urlInput = currentUrlInput,
+                                activeTab = activeTab,
+                                density = currentDensity,
+                                fontFamily = activeFont,
+                                settings = settings,
+                                isFocused = isSearchFocused,
+                                onFocusChange = { isSearchFocused = it },
+                                onUrlChange = { viewModel.setUrlInput(it) },
+                                onNavigate = { viewModel.navigateActiveTab(currentUrlInput, context); focusManager.clearFocus() },
+                                onRefresh = { viewModel.activeTabRefresh(context) },
+                                viewModel = viewModel
+                            )
+
+                            // ColorOS 16 Dropdown
+                            AnimatedVisibility(
+                                visible = isSearchFocused && currentUrlInput.isNotEmpty() && !currentUrlInput.startsWith("http"),
+                                enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+                                exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
+                            ) {
+                                ColorOSSearchSuggestionsOverlay(
+                                    query = currentUrlInput,
+                                    isDark = isDark,
+                                    fontFamily = activeFont,
+                                    onSuggestionClick = { suggestion ->
+                                        viewModel.setUrlInput(suggestion)
+                                        viewModel.navigateActiveTab(suggestion, context)
+                                        focusManager.clearFocus()
+                                    }
                                 )
                             }
-                        } else {
-                            // Loading or intermediate state while webview support is checked
-                            Box(modifier = Modifier.fillMaxSize())
+
+                            // Dynamic Progress Bar Indicator (Aquamorphic Fluid Design Accent)
+                            AnimatedVisibility(
+                                visible = activeTab?.isLoading == true,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                LinearProgressIndicator(
+                                    progress = { (activeTab?.progress ?: 0) / 100f },
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            }
+
+                            // WebView canvas wrapper (Fully floating card style)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(glassCardColor(isDark))
+                                    .border(
+                                        width = 1.dp,
+                                        color = glassBorderColor(isDark),
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                            ) {
+                                if (activeTabId != -1) {
+                                    if (isWebViewSupported == false) {
+                                        FallbackBrowserSimulator(
+                                            viewModel = viewModel,
+                                            activeTab = activeTab,
+                                            isDark = isDark,
+                                            fontFamily = activeFont,
+                                            onNavigate = { targetUrl ->
+                                                viewModel.navigateActiveTab(targetUrl, context)
+                                            }
+                                        )
+                                    } else if (isWebViewSupported == true) {
+                                        key(activeTabId) {
+                                            AndroidView<android.webkit.WebView>(
+                                                factory = { ctx ->
+                                                    try {
+                                                        val webView = viewModel.getOrCreateWebView(activeTabId, ctx)
+                                                        val parent = webView.parent as? android.view.ViewGroup
+                                                        parent?.removeView(webView)
+                                                        webView
+                                                    } catch (e: Throwable) {
+                                                        viewModel.markWebViewUnsupported()
+                                                        android.webkit.WebView(ctx)
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                    } else {
+                                        Box(modifier = Modifier.fillMaxSize())
+                                    }
+                                } else {
+                                    Box(modifier = Modifier.fillMaxSize())
+                                }
+                            }
                         }
-                    } else {
-                        Box(modifier = Modifier.fillMaxSize())
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding()
+                            .navigationBarsPadding()
+                            .padding(bottom = innerPadding.calculateBottomPadding() / 4)
+                    ) {
+                        // URL and Shield Header bar
+                        BrowserHeader(
+                            urlInput = currentUrlInput,
+                            activeTab = activeTab,
+                            density = currentDensity,
+                            fontFamily = activeFont,
+                            settings = settings,
+                            isFocused = isSearchFocused,
+                            onFocusChange = { isSearchFocused = it },
+                            onUrlChange = { viewModel.setUrlInput(it) },
+                            onNavigate = { viewModel.navigateActiveTab(currentUrlInput, context); focusManager.clearFocus() },
+                            onRefresh = { viewModel.activeTabRefresh(context) },
+                            viewModel = viewModel
+                        )
+
+                        // ColorOS 16 Dropdown
+                        AnimatedVisibility(
+                            visible = isSearchFocused && currentUrlInput.isNotEmpty() && !currentUrlInput.startsWith("http"),
+                            enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+                            exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
+                        ) {
+                            ColorOSSearchSuggestionsOverlay(
+                                query = currentUrlInput,
+                                isDark = isDark,
+                                fontFamily = activeFont,
+                                onSuggestionClick = { suggestion ->
+                                    viewModel.setUrlInput(suggestion)
+                                    viewModel.navigateActiveTab(suggestion, context)
+                                    focusManager.clearFocus()
+                                }
+                            )
+                        }
+
+                        // Dynamic Progress Bar Indicator (Aquamorphic Fluid Design Accent)
+                        AnimatedVisibility(
+                            visible = activeTab?.isLoading == true,
+                            enter = fadeIn() + expandVertically(),
+                            exit = fadeOut() + shrinkVertically()
+                        ) {
+                            LinearProgressIndicator(
+                                progress = { (activeTab?.progress ?: 0) / 100f },
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        }
+
+                        // WebView canvas wrapper (Fully floating card style)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(glassCardColor(isDark))
+                                .border(
+                                    width = 1.dp,
+                                    color = glassBorderColor(isDark),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                        ) {
+                            if (activeTabId != -1) {
+                                if (isWebViewSupported == false) {
+                                    FallbackBrowserSimulator(
+                                        viewModel = viewModel,
+                                        activeTab = activeTab,
+                                        isDark = isDark,
+                                        fontFamily = activeFont,
+                                        onNavigate = { targetUrl ->
+                                            viewModel.navigateActiveTab(targetUrl, context)
+                                        }
+                                    )
+                                } else if (isWebViewSupported == true) {
+                                    key(activeTabId) {
+                                        AndroidView<android.webkit.WebView>(
+                                            factory = { ctx ->
+                                                try {
+                                                    val webView = viewModel.getOrCreateWebView(activeTabId, ctx)
+                                                    val parent = webView.parent as? android.view.ViewGroup
+                                                    parent?.removeView(webView)
+                                                    webView
+                                                } catch (e: Throwable) {
+                                                    viewModel.markWebViewUnsupported()
+                                                    android.webkit.WebView(ctx)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                } else {
+                                    Box(modifier = Modifier.fillMaxSize())
+                                }
+                            } else {
+                                Box(modifier = Modifier.fillMaxSize())
+                            }
+                        }
+
+                        // Beautiful floating bottom bar in ColorOS 16 theme
+                        AnimatedVisibility(
+                            visible = !isSearchFocused,
+                            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(300, easing = LinearEasing)) + fadeIn(),
+                            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(300, easing = LinearEasing)) + fadeOut()
+                        ) {
+                            PersistentNavigationBar(
+                                viewModel = viewModel,
+                                activeTab = activeTab,
+                                tabsCount = tabsList.size,
+                                density = currentDensity,
+                                scope = scope,
+                                activeFont = activeFont
+                            )
+                        }
                     }
                 }
 
-                // Beautiful floating bottom bar in ColorOS 16 theme
-                PersistentNavigationBar(
-                    viewModel = viewModel,
-                    activeTab = activeTab,
-                    tabsCount = tabsList.size,
-                    density = currentDensity,
-                    scope = scope,
-                    activeFont = activeFont
-                )
-            }
-
             // Overlay Sheets/Dialogs triggered dynamically
-            val showTabs by viewModel.showTabsOverview.collectAsState()
-            val showSettings by viewModel.showSettings.collectAsState()
-            val showBookmarks by viewModel.showBookmarks.collectAsState()
-            val showHistory by viewModel.showHistory.collectAsState()
-            val showDownloads by viewModel.showDownloads.collectAsState()
-            val showShield by viewModel.showShieldPanel.collectAsState()
-
-            // Standalone immersive Page view for tabs with smooth slide transitions (ColorOS 16 styled)
             AnimatedVisibility(
                 visible = showTabs,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -441,7 +568,6 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 )
             }
 
-            val showMenuDrawer by viewModel.showMenuDrawer.collectAsState()
             if (showMenuDrawer) {
                 MenuDrawerSheet(
                     viewModel = viewModel,
@@ -530,27 +656,6 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     tonalElevation = 6.dp
                 )
             }
-
-            FloatingIOSDownloadHUD(
-                downloadsList = downloadsList,
-                recentlyCompletedDownload = recentlyCompletedDownload,
-                showCompletedBubble = showCompletedBubble,
-                onDismissCompleted = { showCompletedBubble = false },
-                showDownloadsPage = { viewModel.showDownloads.value = true },
-                viewModel = viewModel,
-                activeFont = activeFont,
-                isDark = isDark,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
-
-            if (iosNotifications.isNotEmpty()) {
-                IosNotificationHUD(
-                    notifications = iosNotifications,
-                    onDismiss = { viewModel.dismissIosNotification(it) },
-                    activeFont = activeFont,
-                    isDark = isDark
-                )
-            }
         }
     }
 }
@@ -613,14 +718,6 @@ fun BrowserHeader(
                         tint = Color(0xFF0066FF),
                         modifier = Modifier.size(20.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Shield",
-                        fontFamily = fontFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = (12f + density.fontOffset).sp,
-                        color = Color(0xFF0066FF)
-                    )
                 }
             }
 
@@ -671,7 +768,9 @@ fun BrowserHeader(
                             fontFamily = fontFamily,
                             fontSize = (14f + density.fontOffset).sp
                         ),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(if (isDark) Color.White else Color.Black),
                         singleLine = true,
+                        maxLines = 1,
                         keyboardOptions = KeyboardOptions(
                             imeAction = ImeAction.Go
                         ),
@@ -709,6 +808,32 @@ fun BrowserHeader(
     }
 }
 
+// Helpers for Adaptive Layouts
+@Composable
+fun AdaptiveNavLayout(
+    isTablet: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    if (isTablet) {
+        Column(
+            modifier = modifier,
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            content()
+        }
+    } else {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            content()
+        }
+    }
+}
+
 // Persistent Navigation bar offering tablet and mobile compliance layout
 @Composable
 fun PersistentNavigationBar(
@@ -727,26 +852,39 @@ fun PersistentNavigationBar(
         else -> isSystemInDarkTheme()
     }
 
+    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    
     Surface(
         color = glassCardColor(isDark),
         tonalElevation = 6.dp,
         shadowElevation = 0.dp,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier
-            .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 8.dp)
+            .padding(
+                start = if (isTablet) 8.dp else 14.dp,
+                end = if (isTablet) 8.dp else 14.dp,
+                top = 4.dp, 
+                bottom = 8.dp
+            )
             .border(
                 width = 1.dp,
                 color = glassBorderColor(isDark),
                 shape = RoundedCornerShape(24.dp)
             )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(density.barHeight - 2.dp)
-                .padding(horizontal = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        AdaptiveNavLayout(
+            isTablet = isTablet,
+            modifier = if (isTablet) {
+                Modifier
+                    .width(density.barHeight + 12.dp)
+                    .fillMaxHeight(0.6f)
+                    .padding(vertical = 14.dp)
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .height(density.barHeight - 2.dp)
+                    .padding(horizontal = 14.dp)
+            }
         ) {
             // Back Action (Chevron Left)
             Box(
@@ -877,6 +1015,7 @@ fun MenuDrawerSheet(
         "DARK" -> true
         else -> isSystemInDarkTheme()
     }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val solidColor = if (isDark) Color(0xD91E1E23) else Color(0xD9FAFAFA)
 
     ModalBottomSheet(
@@ -995,7 +1134,77 @@ fun MenuDrawerSheet(
                     )
                 }
 
-                // Third Row spanning across (grid-column: span 2)
+                // Third Row spanning across (grid-column: span 2) - Shield Privacy Guard
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f))
+                        .border(
+                            1.dp,
+                            if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f),
+                            RoundedCornerShape(20.dp)
+                        )
+                        .clickable {
+                            viewModel.showShieldPanel.value = true
+                            onDismiss()
+                        }
+                ) {
+                    val sessionAds = viewModel.blockedAdsSession.collectAsState().value
+                    val sessionTrackers = viewModel.blockedTrackersSession.collectAsState().value
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(
+                                    color = if (isDark) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color(0xFF4CAF50).copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (settings.adBlockEnabled) Icons.Default.Shield else Icons.Default.ShieldMoon,
+                                contentDescription = "Shield Guard",
+                                tint = Color(0xFF4CAF50),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Shield Privacy Guard",
+                                fontFamily = activeFont,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                            )
+                            if (settings.adBlockEnabled || settings.trackerBlockEnabled) {
+                                Text(
+                                    text = trans("Blocked") + " ${sessionAds + sessionTrackers} " + trans("trackers"),
+                                    fontFamily = activeFont,
+                                    fontSize = 12.sp,
+                                    color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.6f)
+                                )
+                            } else {
+                                Text(
+                                    text = trans("Shield inactive"),
+                                    fontFamily = activeFont,
+                                    fontSize = 12.sp,
+                                    color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Fourth Row spanning across - Browser Settings
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1544,6 +1753,129 @@ fun ShieldDashboardSheet(
     }
 }
 
+@Composable
+fun TabCard(
+    tab: TabState,
+    isActive: Boolean,
+    activeFont: FontFamily,
+    isDark: Boolean,
+    onClick: () -> Unit,
+    onClose: () -> Unit
+) {
+    val hostSnippet = remember(tab.url) {
+        try {
+            val uri = java.net.URI(tab.url)
+            val rawHost = uri.host ?: ""
+            if (rawHost.startsWith("www.")) rawHost.substring(4) else rawHost
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    val avatarChar = if (hostSnippet.isNotEmpty()) {
+        hostSnippet.first().uppercaseChar().toString()
+    } else {
+        "?"
+    }
+
+    val avatarColor = remember(hostSnippet) {
+        var hash = 0
+        for (char in hostSnippet) {
+            hash = char.code + ((hash shl 5) - hash)
+        }
+        val h = Math.abs(hash % 360).toFloat()
+        androidx.compose.ui.graphics.Color.hsv(h, if (isDark) 0.5f else 0.7f, if (isDark) 0.8f else 0.7f)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .clickable { onClick() }
+            .border(
+                width = if (isActive) 2.dp else 1.dp,
+                color = if (isActive) androidx.compose.ui.graphics.Color(0xFF0066FF) else glassBorderColor(isDark),
+                shape = RoundedCornerShape(20.dp)
+            ),
+        shape = RoundedCornerShape(20.dp),
+        color = if (isActive) androidx.compose.ui.graphics.Color(0xFF0066FF).copy(alpha = 0.05f) else glassCardColor(isDark),
+        tonalElevation = if (isActive) 4.dp else 1.dp
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .background(color = avatarColor.copy(alpha = 0.15f), shape = CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = avatarChar,
+                            fontFamily = activeFont,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            fontSize = 11.sp,
+                            color = avatarColor
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (tab.title.isBlank() || tab.title == "New Tab") "Start Page" else tab.title,
+                        fontFamily = activeFont,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        color = if (isDark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF1C1C1E)
+                    )
+                }
+
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close Space",
+                        tint = if (isDark) androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f) else androidx.compose.ui.graphics.Color(0xFF6E6E73),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(if (isDark) androidx.compose.ui.graphics.Color.White.copy(alpha = 0.08f) else androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.04f))
+            )
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (tab.url == "about:blank" || tab.url.isEmpty()) Icons.Default.Language else Icons.Default.Public,
+                    contentDescription = null,
+                    tint = (if (isDark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF0066FF)).copy(alpha = 0.12f),
+                    modifier = Modifier.size(56.dp)
+                )
+            }
+        }
+    }
+}
+
 // Full-Screen Page: High-fidelity, smooth and modern Tabs space manager (ColorOS 16 style)
 @Composable
 fun TabsOverviewPage(
@@ -1574,6 +1906,8 @@ fun TabsOverviewPage(
         }
     }
 
+    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+
     Surface(
         modifier = Modifier
             .fillMaxSize()
@@ -1582,19 +1916,117 @@ fun TabsOverviewPage(
             .colorOSGradientBackground(isDark),
         color = Color.Transparent
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // 1. Sleek Search Header (Top-bar style as requested)
+        val navBar: @Composable () -> Unit = {
             Surface(
                 color = glassCardColor(isDark),
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(34.dp),
+                tonalElevation = 6.dp,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .height(56.dp)
-                    .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
+                    .padding(
+                        start = if (isTablet) 8.dp else 16.dp,
+                        end = if (isTablet) 8.dp else 16.dp,
+                        top = if (isTablet) 16.dp else 12.dp,
+                        bottom = if (isTablet) 16.dp else 24.dp
+                    )
+                    .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(34.dp))
             ) {
+                AdaptiveNavLayout(
+                    isTablet = isTablet,
+                    modifier = if (isTablet) {
+                        Modifier
+                            .fillMaxHeight(0.7f)
+                            .width(68.dp)
+                            .padding(vertical = 24.dp)
+                    } else {
+                        Modifier
+                            .fillMaxWidth()
+                            .height(68.dp)
+                            .padding(horizontal = 24.dp)
+                    }
+                ) {
+                    IconButton(onClick = { onDismiss() }) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowLeft,
+                            contentDescription = "Back",
+                            tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    IconButton(onClick = { /* Forward Action Decoration */ }) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowRight,
+                            contentDescription = "Forward Action",
+                            tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    IconButton(onClick = {
+                        viewModel.navigateActiveTab(settings.homeUrl, context)
+                        onDismiss()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Home,
+                            contentDescription = "Home Page Launcher",
+                            tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { /* We are already on Tabs Page */ }
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .background(
+                                    color = Color(0xFF0066FF).copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .border(
+                                    width = 2.dp,
+                                    color = Color(0xFF0066FF),
+                                    shape = RoundedCornerShape(6.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = tabsList.size.toString(),
+                                fontFamily = activeFont,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0066FF)
+                            )
+                        }
+                    }
+                    IconButton(onClick = { }) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Menu Placeholder",
+                            tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (isTablet) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                navBar()
+                Column(modifier = Modifier.fillMaxHeight().weight(1f)) {
+                    // Search Header
+                    Surface(
+                        color = glassCardColor(isDark),
+                        shape = RoundedCornerShape(28.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .height(56.dp)
+                            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
+                    ) {
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1836,110 +2268,164 @@ fun TabsOverviewPage(
                                             tint = (if (isDark) Color.White else Color(0xFF0066FF)).copy(alpha = 0.12f),
                                             modifier = Modifier.size(56.dp)
                                         )
+                                    } // closes internal Box
+                                } // closes Column
+                            } // closes Surface
+                        } // closes Box
+                    } // closes items
+                } // closes LazyVerticalGrid
+            } // closes else
+            } // closes Column
+            } // closes Row
+        } else {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = 104.dp)
+                ) {
+                    // Search Header
+                    Surface(
+                            color = glassCardColor(isDark),
+                            shape = RoundedCornerShape(28.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .height(56.dp)
+                                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search Icon",
+                                    tint = if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(modifier = Modifier.weight(1f)) {
+                                    if (searchText.isEmpty()) {
+                                        Text(
+                                            text = "Search or enter address",
+                                            fontFamily = activeFont,
+                                            fontSize = 15.sp,
+                                            color = if (isDark) Color.White.copy(alpha = 0.4f) else Color(0xFF6E6E73)
+                                        )
+                                    }
+                                    androidx.compose.foundation.text.BasicTextField(
+                                        value = searchText,
+                                        onValueChange = { searchText = it },
+                                        singleLine = true,
+                                        textStyle = androidx.compose.ui.text.TextStyle(
+                                            color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                                            fontSize = 15.sp,
+                                            fontFamily = activeFont
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
+
+                        // 2. Beautiful Staggered Grid for tabs
+                        LazyVerticalStaggeredGrid(
+                            columns = StaggeredGridCells.Fixed(if (LocalConfiguration.current.screenWidthDp > 600) 3 else 2),
+                            contentPadding = PaddingValues(16.dp),
+                            verticalItemSpacing = 16.dp,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            item(span = StaggeredGridItemSpan.FullLine, key = "open_tabs_title") {
+                                Text(
+                                    text = "Open Tabs",
+                                    fontFamily = activeFont,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 18.sp,
+                                    color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp, top = 8.dp)
+                                )
+                            }
+                            items(filteredTabs, key = { it.id }) { tab ->
+                                Box(modifier = Modifier) {
+                                    TabCard(
+                                        tab = tab,
+                                        isActive = tab.id == activeTabId,
+                                        activeFont = activeFont,
+                                        isDark = isDark,
+                                        onClick = {
+                                            viewModel.selectTab(tab.id)
+                                            onDismiss()
+                                        },
+                                        onClose = {
+                                            viewModel.removeTab(tab.id)
+                                            if (tabsList.size == 1) {
+                                                onDismiss()
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+
+                            // Add New Tab Button styling as a glass tile
+                            item(key = "new_tab_btn") {
+                                Box(modifier = Modifier) {
+                                    Surface(
+                                        color = if (isDark) Color(0x0aFFFFFF) else Color(0x0a000000),
+                                        shape = RoundedCornerShape(24.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(0.85f)
+                                            .clip(RoundedCornerShape(24.dp))
+                                            .clickable {
+                                                viewModel.addNewTab()
+                                                onDismiss()
+                                            }
+                                            .border(
+                                                1.dp,
+                                                if (isDark) Color(0x1aFFFFFF) else Color(0x1a000000),
+                                                RoundedCornerShape(24.dp)
+                                            )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxSize(),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(56.dp)
+                                                    .background(Color(0xFF0066FF).copy(alpha = 0.1f), CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Add,
+                                                    contentDescription = "New Tab",
+                                                    tint = Color(0xFF0066FF),
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-            }
-
-            // 3. Floating Bottom Navigation Bar matching other separate pages
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Surface(
-                    color = glassCardColor(isDark),
-                    shape = RoundedCornerShape(28.dp),
-                    tonalElevation = 6.dp,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(68.dp)
-                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
+                        .align(Alignment.BottomCenter)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { onDismiss() }) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowLeft,
-                                contentDescription = "Back",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        IconButton(onClick = { /* Forward Action Decoration */ }) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowRight,
-                                contentDescription = "Forward Action",
-                                tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        IconButton(onClick = {
-                            viewModel.navigateActiveTab(settings.homeUrl, context)
-                            onDismiss()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Home,
-                                contentDescription = "Home Page Launcher",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable { /* We are already on Tabs Page */ }
-                                .padding(8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(26.dp)
-                                    .background(
-                                        color = Color(0xFF0066FF).copy(alpha = 0.15f),
-                                        shape = RoundedCornerShape(6.dp)
-                                    )
-                                    .border(
-                                        width = 2.dp,
-                                        color = Color(0xFF0066FF),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = tabsList.size.toString(),
-                                    fontFamily = activeFont,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF0066FF)
-                                )
-                            }
-                        }
-                        IconButton(onClick = {
-                            viewModel.showMenuDrawer.value = true
-                            onDismiss()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Menu,
-                                contentDescription = "Menu Drawer",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
+                    navBar()
                 }
             }
         }
     }
 }
+
 
 // Sheet 3: Core Settings & Personalization panel – Revamped to match the gorgeous fullscreen HTML design with an interactive customization suite
 @OptIn(ExperimentalMaterial3Api::class)
@@ -2166,7 +2652,7 @@ fun SettingsSheet(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
-                                                .clickable { viewModel.updateSearchEngine(engineValue) }
+                                                .clickable { viewModel.updateSearchEngine(engineValue, context) }
                                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -3275,6 +3761,8 @@ fun BookmarksPage(
         }
     }
     
+    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+
     Surface(
         modifier = Modifier
             .fillMaxSize()
@@ -3283,10 +3771,16 @@ fun BookmarksPage(
             .colorOSGradientBackground(isDark),
         color = Color.Transparent
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // 1. Sleek Search Header (Top-bar)
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = if (isTablet) 80.dp else 0.dp,
+                        bottom = if (isTablet) 0.dp else 80.dp
+                    )
+            ) {
+                // 1. Sleek Search Header (Top-bar)
             Surface(
                 color = glassCardColor(isDark),
                 shape = RoundedCornerShape(28.dp),
@@ -3481,102 +3975,104 @@ fun BookmarksPage(
                     }
                 }
             }
+            } // CLOSE COLUMN
 
-            // 3. Floating Bottom Navigation Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            // 3. Adaptive Navigation Bar
+            AdaptiveNavLayout(
+                isTablet = isTablet,
+                modifier = Modifier.then(
+                    if (isTablet) {
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 16.dp)
+                            .width(68.dp)
+                            .fillMaxHeight(0.6f)
+                            .background(glassCardColor(isDark), RoundedCornerShape(34.dp))
+                            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(34.dp))
+                            .padding(vertical = 24.dp)
+                    } else {
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .fillMaxWidth()
+                            .height(68.dp)
+                            .background(glassCardColor(isDark), RoundedCornerShape(28.dp))
+                            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
+                            .padding(horizontal = 24.dp)
+                    }
+                )
             ) {
-                Surface(
-                    color = glassCardColor(isDark),
-                    shape = RoundedCornerShape(28.dp),
-                    tonalElevation = 6.dp,
+                IconButton(onClick = { onDismiss() }) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowLeft,
+                        contentDescription = "Back",
+                        tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                IconButton(onClick = { /* Forward Action Handled via context */ }) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = "Forward Action",
+                        tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                IconButton(onClick = {
+                    viewModel.navigateActiveTab(settings.homeUrl, context)
+                    onDismiss()
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Home,
+                        contentDescription = "Home Page Launcher",
+                        tint = Color(0xFF0066FF),
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(68.dp)
-                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
+                        .clip(CircleShape)
+                        .clickable {
+                            viewModel.showTabsOverview.value = true
+                            onDismiss()
+                        }
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .size(24.dp)
+                            .border(
+                                width = 2.dp,
+                                color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                                shape = RoundedCornerShape(6.dp)
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        IconButton(onClick = { onDismiss() }) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowLeft,
-                                contentDescription = "Back",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        IconButton(onClick = { /* Forward Action Handled via context */ }) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowRight,
-                                contentDescription = "Forward Action",
-                                tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        IconButton(onClick = {
-                            viewModel.navigateActiveTab(settings.homeUrl, context)
-                            onDismiss()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Home,
-                                contentDescription = "Home Page Launcher",
-                                tint = Color(0xFF0066FF),
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable {
-                                    viewModel.showTabsOverview.value = true
-                                    onDismiss()
-                                }
-                                .padding(8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .border(
-                                        width = 2.dp,
-                                        color = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = tabsList.size.toString(),
-                                    fontFamily = activeFont,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                )
-                            }
-                        }
-                        IconButton(onClick = {
-                            viewModel.showMenuDrawer.value = true
-                            onDismiss()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Menu,
-                                contentDescription = "Menu Drawer",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
+                        Text(
+                            text = tabsList.size.toString(),
+                            fontFamily = activeFont,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                        )
                     }
                 }
-            }
-        }
-    }
-}
+                IconButton(onClick = {
+                    viewModel.showMenuDrawer.value = true
+                    onDismiss()
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Menu Drawer Launcher",
+                        tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            } // AdaptiveNavLayout
+        } // Box
+    } // Surface
+} // Fun
 
 // Sheet 5: Standalone History page with timeline and clear capability
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3630,6 +4126,8 @@ fun HistoryPage(
         )
     }
 
+    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+
     Surface(
         modifier = Modifier
             .fillMaxSize()
@@ -3638,10 +4136,16 @@ fun HistoryPage(
             .colorOSGradientBackground(isDark),
         color = Color.Transparent
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // 1. Sleek Search Header (Top-bar)
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = if (isTablet) 80.dp else 0.dp,
+                        bottom = if (isTablet) 0.dp else 80.dp
+                    )
+            ) {
+                // 1. Sleek Search Header (Top-bar)
             Surface(
                 color = glassCardColor(isDark),
                 shape = RoundedCornerShape(28.dp),
@@ -3832,102 +4336,104 @@ fun HistoryPage(
                     }
                 }
             }
+            } // CLOSE COLUMN
 
-            // 3. Floating Bottom Navigation Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            // 3. Adaptive Navigation Bar
+            AdaptiveNavLayout(
+                isTablet = isTablet,
+                modifier = Modifier.then(
+                    if (isTablet) {
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 16.dp)
+                            .width(68.dp)
+                            .fillMaxHeight(0.6f)
+                            .background(glassCardColor(isDark), RoundedCornerShape(34.dp))
+                            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(34.dp))
+                            .padding(vertical = 24.dp)
+                    } else {
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .fillMaxWidth()
+                            .height(68.dp)
+                            .background(glassCardColor(isDark), RoundedCornerShape(28.dp))
+                            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
+                            .padding(horizontal = 24.dp)
+                    }
+                )
             ) {
-                Surface(
-                    color = glassCardColor(isDark),
-                    shape = RoundedCornerShape(28.dp),
-                    tonalElevation = 6.dp,
+                IconButton(onClick = { onDismiss() }) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowLeft,
+                        contentDescription = "Back",
+                        tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                IconButton(onClick = { /* Forward Action Mock */ }) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = "Forward Action",
+                        tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                IconButton(onClick = {
+                    viewModel.navigateActiveTab(settings.homeUrl, context)
+                    onDismiss()
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Home,
+                        contentDescription = "Home Page Launcher",
+                        tint = Color(0xFF0066FF),
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(68.dp)
-                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
+                        .clip(CircleShape)
+                        .clickable {
+                            viewModel.showTabsOverview.value = true
+                            onDismiss()
+                        }
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .size(24.dp)
+                            .border(
+                                width = 2.dp,
+                                color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                                shape = RoundedCornerShape(6.dp)
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        IconButton(onClick = { onDismiss() }) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowLeft,
-                                contentDescription = "Back",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        IconButton(onClick = { /* Forward Action Mock */ }) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowRight,
-                                contentDescription = "Forward Action",
-                                tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        IconButton(onClick = {
-                            viewModel.navigateActiveTab(settings.homeUrl, context)
-                            onDismiss()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Home,
-                                contentDescription = "Home Page Launcher",
-                                tint = Color(0xFF0066FF),
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable {
-                                    viewModel.showTabsOverview.value = true
-                                    onDismiss()
-                                }
-                                .padding(8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .border(
-                                        width = 2.dp,
-                                        color = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = tabsList.size.toString(),
-                                    fontFamily = activeFont,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                )
-                            }
-                        }
-                        IconButton(onClick = {
-                            viewModel.showMenuDrawer.value = true
-                            onDismiss()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Menu,
-                                contentDescription = "Menu Drawer",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
+                        Text(
+                            text = tabsList.size.toString(),
+                            fontFamily = activeFont,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                        )
                     }
                 }
-            }
-        }
-    }
-}
+                IconButton(onClick = {
+                    viewModel.showMenuDrawer.value = true
+                    onDismiss()
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Menu Drawer",
+                        tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            } // AdaptiveNavLayout
+        } // Box
+    } // Surface
+} // Fun
 
 // Standalone Page: Downloads directory manager (ColorOS 16 styled)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3937,605 +4443,319 @@ fun DownloadsPage(
     activeFont: FontFamily,
     onDismiss: () -> Unit
 ) {
-    val downloadsList by viewModel.downloads.collectAsState()
-    val settings by viewModel.settings.collectAsState()
-    val tabsList by viewModel.tabs.collectAsState()
     val context = LocalContext.current
-    var selectedTab by remember { mutableStateOf(0) } // 0 = All, 1 = Ongoing, 2 = Completed
-    var searchQuery by remember { mutableStateOf("") }
-
+    val settings by viewModel.settings.collectAsState()
     val isDark = when (settings.themeMode) {
         "LIGHT" -> false
         "DARK" -> true
         else -> isSystemInDarkTheme()
     }
+    var selectedTab by remember { mutableStateOf(0) }
     
-    val cardColor = glassCardColor(isDark = isDark)
-    val cardBorderColor = glassBorderColor(isDark = isDark)
-    val subTextColor = if (isDark) Color.White.copy(alpha = 0.5f) else Color(0xFF6E6E73)
+    // Theme Colors
+    val bgColor = if (isDark) Color(0xFF121214) else Color(0xFFFDFBFB)
+    val glassBg = if (isDark) Color(0xA61E1E23) else Color(0xFFEEEEEE)
+    val glassBorder = if (isDark) Color(0x1AFFFFFF) else Color(0xFFE0E0E0)
+    val textMain = if (isDark) Color(0xFFF5F5F7) else Color(0xFF1C1C1E)
+    val textMuted = if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73)
+    val accentColor = if (isDark) Color(0xFF4D94FF) else Color(0xFF0066FF)
+    val successColor = if (isDark) Color(0xFF30D158) else Color(0xFF34C759)
+    val dangerColor = if (isDark) Color(0xFFFF453A) else Color(0xFFFF3B30)
+    val itemBg = if (isDark) Color(0x0DFFFFFF) else Color.White
+    val itemBorder = if (isDark) Color(0x1AFFFFFF) else Color(0xFFE0E0E0)
 
-    // Filter downloads
-    val filteredDownloads = remember(downloadsList, selectedTab, searchQuery) {
-        downloadsList.filter { item ->
-            val matchesTab = when (selectedTab) {
-                1 -> item.status == "DOWNLOADING" || item.status == "PENDING"
-                2 -> item.status == "COMPLETED"
-                else -> true
-            }
-            val matchesSearch = if (searchQuery.isNotEmpty()) {
-                item.fileName.contains(searchQuery, ignoreCase = true)
-            } else {
-                true
-            }
-            matchesTab && matchesSearch
+    val allDownloads by viewModel.downloads.collectAsState()
+    var searchQuery by remember { mutableStateOf("") }
+    val searchFocusRequester = remember { FocusRequester() }
+    
+    val filteredDownloads = remember(selectedTab, allDownloads, searchQuery) {
+        val list = if (searchQuery.isNotBlank()) {
+            allDownloads.filter { it.fileName.contains(searchQuery, ignoreCase = true) }
+        } else {
+            allDownloads
+        }
+        when (selectedTab) {
+            1 -> list.filter { it.status == "DOWNLOADING" || it.status == "PENDING" }
+            2 -> list.filter { it.status == "COMPLETED" || it.status == "FAILED" }
+            else -> list
         }
     }
 
-    Surface(
+    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .colorOSGradientBackground(isDark),
-        color = Color.Transparent
+            .background(bgColor)
     ) {
+        // Content
         Column(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    start = if (isTablet) 100.dp else 20.dp,
+                    end = 20.dp,
+                    bottom = if (isTablet) 20.dp else 120.dp,
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 80.dp
+                )
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 1. Sleek Search Header (Top-bar)
-            Surface(
-                color = glassCardColor(isDark),
-                shape = RoundedCornerShape(28.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .height(56.dp)
-                    .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search Icon",
-                        tint = if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (searchQuery.isEmpty()) {
-                            Text(
-                                text = "Search downloaded documents...",
-                                fontFamily = activeFont,
-                                fontSize = 15.sp,
-                                color = if (isDark) Color.White.copy(alpha = 0.4f) else Color(0xFF6E6E73)
-                            )
-                        }
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            textStyle = LocalTextStyle.current.copy(
-                                color = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                fontFamily = activeFont,
-                                fontSize = 15.sp
-                            ),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-            }
-
-            // 2. Main Content
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Downloads",
-                        fontFamily = activeFont,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 28.sp,
-                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                    )
-                    
-                    // Clear all completed downloads action
-                    if (downloadsList.any { it.status == "COMPLETED" }) {
-                        IconButton(
-                            onClick = {
-                                downloadsList.filter { it.status == "COMPLETED" }.forEach {
-                                    viewModel.deleteDownload(it.id)
-                                }
-                            },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "Clear All Completed",
-                                tint = Color(0xFFFF3B30),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    } else {
-                        IconButton(
-                            onClick = { /* Search Option Button Decoration */ },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search Option",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-                }
-
-                // ColorOS 16 Pill Tab Selector Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            color = if (isDark) Color(0x0CFFFFFF) else Color(0x06000000),
-                            shape = RoundedCornerShape(16.dp)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f),
-                            shape = RoundedCornerShape(16.dp)
-                        )
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    val tabs = listOf("All", "Ongoing", "Completed")
-                    tabs.forEachIndexed { index, label ->
-                        val isSelected = selectedTab == index
-                        val count = when (index) {
-                            1 -> downloadsList.count { it.status == "DOWNLOADING" || it.status == "PENDING" }
-                            2 -> downloadsList.count { it.status == "COMPLETED" }
-                            else -> downloadsList.size
-                        }
-                        
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(
-                                    color = if (isSelected) Color(0xFF0066FF).copy(alpha = 0.85f) else Color.Transparent
-                                )
-                                .clickable { selectedTab = index }
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontFamily = activeFont,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 13.sp,
-                                    color = if (isSelected) Color.White else (if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73))
-                                )
-                                if (count > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .background(
-                                                color = if (isSelected) Color.White.copy(alpha = 0.25f) else (if (isDark) Color(0xFF2C2C2F) else Color(0xFFDCDCE0)),
-                                                shape = CircleShape
-                                            )
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = count.toString(),
-                                            fontFamily = activeFont,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 10.sp,
-                                            color = if (isSelected) Color.White else (if (isDark) Color.LightGray else Color(0xFF424242))
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Downloads feed Column
-                if (filteredDownloads.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Cloud,
-                                contentDescription = "Empty Queue",
-                                tint = if (isDark) Color(0xFF2C2C30) else Color(0xFFE5E5EA),
-                                modifier = Modifier.size(96.dp)
-                            )
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Text(
-                                text = if (searchQuery.isNotEmpty()) "No files found" else "Downloads folder is empty",
-                                fontFamily = activeFont,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f),
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (searchQuery.isNotEmpty()) "Try searching a different name" else "Direct web logs saves here",
-                                fontFamily = activeFont,
-                                fontSize = 12.sp,
-                                color = subTextColor,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(bottom = 16.dp)
-                    ) {
-                        items(filteredDownloads, key = { it.id }) { item ->
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        if (item.status == "COMPLETED") {
-                                            openDownloadedFile(context, item.filePath, item.mimeType)
-                                        }
-                                    }
-                                    .border(
-                                        width = 1.dp,
-                                        color = cardBorderColor,
-                                        shape = RoundedCornerShape(20.dp)
-                                    ),
-                                shape = RoundedCornerShape(20.dp),
-                                color = cardColor
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Squircle Rounded Container based on file extensions
-                                    val extension = item.fileName.substringAfterLast('.', "").lowercase()
-                                    val squircleBg = when {
-                                        item.status == "FAILED" -> if (isDark) Color(0x28AA2C2C) else Color(0xFFFFEBEE)
-                                        extension in listOf("mp3", "wav", "m4a", "ogg") -> if (isDark) Color(0x1F81D4FA) else Color(0xFFE3F2FD)
-                                        extension in listOf("mp4", "mkv", "avi", "mov") -> if (isDark) Color(0x1FB39DDB) else Color(0xFFF3E5F5)
-                                        extension in listOf("zip", "rar", "tar", "7z") -> if (isDark) Color(0x1FFFCC80) else Color(0xFFFFF3E0)
-                                        extension in listOf("pdf", "doc", "docx", "txt") -> if (isDark) Color(0x1FA5D6A7) else Color(0xFFE8F5E9)
-                                        else -> if (isDark) Color(0xFF2C2C2F) else Color(0xFFECEEF2)
-                                    }
-
-                                    val squircleTint = when {
-                                        item.status == "FAILED" -> Color(0xFFD32F2F)
-                                        extension in listOf("mp3", "wav", "m4a", "ogg") -> Color(0xFF1E88E5)
-                                        extension in listOf("mp4", "mkv", "avi", "mov") -> Color(0xFF7B1FA2)
-                                        extension in listOf("zip", "rar", "tar", "7z") -> Color(0xFFFF9800)
-                                        extension in listOf("pdf", "doc", "docx", "txt") -> Color(0xFF2E7D32)
-                                        else -> if (isDark) Color.White.copy(alpha = 0.8f) else Color(0xFF555555)
-                                    }
-
-                                    val isDownloading = item.status == "DOWNLOADING" || item.status == "PENDING"
-                                    if (isDownloading) {
-                                        val pct = if (item.totalBytes > 0) item.downloadedBytes.toFloat() / item.totalBytes.toFloat() else 0f
-                                        val animatedPct by animateFloatAsState(
-                                            targetValue = pct.coerceIn(0f, 1f),
-                                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                                            label = "ListProgressCircle"
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .size(46.dp)
-                                                .background(
-                                                    if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.05f),
-                                                    CircleShape
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize().padding(4.dp)) {
-                                                val strokeWidth = 3.dp.toPx()
-                                                drawArc(
-                                                    color = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f),
-                                                    startAngle = -90f,
-                                                    sweepAngle = 360f,
-                                                    useCenter = false,
-                                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                        width = strokeWidth,
-                                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                                    )
-                                                )
-                                                drawArc(
-                                                    color = Color(0xFF0066FF),
-                                                    startAngle = -90f,
-                                                    sweepAngle = animatedPct * 360f,
-                                                    useCenter = false,
-                                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                        width = strokeWidth,
-                                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                                    )
-                                                )
-                                            }
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(10.dp)
-                                                    .background(Color(0xFF0066FF), RoundedCornerShape(2.dp))
-                                            )
-                                        }
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(46.dp)
-                                                .background(squircleBg, RoundedCornerShape(14.dp)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = getFileTypeIcon(item.fileName, item.status),
-                                                contentDescription = "file icon",
-                                                tint = squircleTint,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(14.dp))
-
-                                    Column(
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text(
-                                            text = item.fileName,
-                                            fontFamily = activeFont,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                        )
-                                        
-                                        Spacer(modifier = Modifier.height(3.dp))
-                                        
-                                        if (isDownloading) {
-                                            val percent = if (item.totalBytes > 0) (item.downloadedBytes * 100 / item.totalBytes) else 0
-                                            val speed = viewModel.downloadSpeeds[item.id] ?: "Active"
-                                            
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = "Downloading • $speed",
-                                                    fontFamily = activeFont,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF0066FF)
-                                                )
-                                                Text(
-                                                    text = "$percent%",
-                                                    fontFamily = activeFont,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF0066FF)
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            
-                                            val animatedPctBar by animateFloatAsState(
-                                                targetValue = if (item.totalBytes > 0) item.downloadedBytes.toFloat() / item.totalBytes.toFloat() else 0f,
-                                                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                                                label = "ListProgressBar"
-                                            )
-                                            LinearProgressIndicator(
-                                                progress = { animatedPctBar },
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(4.dp)
-                                                    .clip(RoundedCornerShape(2.dp)),
-                                                color = Color(0xFF0066FF),
-                                                trackColor = if (isDark) Color(0xFF2C2C2F) else Color(0xFFE5E5EA)
-                                            )
-
-                                            Spacer(modifier = Modifier.height(4.dp))
-
-                                            Text(
-                                                text = "${formatBytes(item.downloadedBytes)} of ${formatBytes(item.totalBytes)}",
-                                                fontFamily = activeFont,
-                                                fontSize = 11.sp,
-                                                color = subTextColor
-                                            )
-                                        } else {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                // Beautiful status tag
-                                                val statusBg = when (item.status) {
-                                                    "COMPLETED" -> if (isDark) Color(0x284CAF50) else Color(0xFFE8F5E9)
-                                                    "FAILED" -> if (isDark) Color(0x28AA2C2C) else Color(0xFFFFEBEE)
-                                                    else -> if (isDark) Color(0xFF2C2C2F) else Color(0xFFEBEBEE)
-                                                }
-                                                val statusTint = when (item.status) {
-                                                    "COMPLETED" -> Color(0xFF2E7D32)
-                                                    "FAILED" -> Color(0xFFD32F2F)
-                                                    else -> subTextColor
-                                                }
-
-                                                Box(
-                                                    modifier = Modifier
-                                                        .background(statusBg, RoundedCornerShape(6.dp))
-                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                ) {
-                                                    Text(
-                                                        text = item.status,
-                                                        fontFamily = activeFont,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 9.sp,
-                                                        color = statusTint
-                                                    )
-                                                }
-
-                                                Text(
-                                                    text = "•",
-                                                    fontFamily = activeFont,
-                                                    fontSize = 11.sp,
-                                                    color = subTextColor
-                                                )
-                                                
-                                                Text(
-                                                    text = formatBytes(item.totalBytes),
-                                                    fontFamily = activeFont,
-                                                    fontSize = 11.sp,
-                                                    color = subTextColor
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    IconButton(
-                                        onClick = { viewModel.deleteDownload(item.id) },
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete item entry",
-                                            tint = subTextColor.copy(alpha = 0.6f),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 3. Floating Bottom Navigation Bar
+            // Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(bottom = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    color = glassCardColor(isDark),
-                    shape = RoundedCornerShape(28.dp),
-                    tonalElevation = 6.dp,
+                Text("Downloads", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = textMain, fontFamily = activeFont)
+            }
+
+            // Tabs
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(glassBg, shape = RoundedCornerShape(24.dp))
+                    .border(1.dp, glassBorder, RoundedCornerShape(24.dp))
+                    .padding(4.dp)
+            ) {
+                val config = LocalConfiguration.current
+                val tabWidth = with(LocalDensity.current) { (config.screenWidthDp - 48)/3 } 
+                
+                // Animated Indicator
+                val indicatorOffset by animateDpAsState(
+                    targetValue = (tabWidth * selectedTab).dp, 
+                    animationSpec = tween(400, easing = FastOutSlowInEasing),
+                    label = ""
+                )
+
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(68.dp)
-                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
+                        .matchParentSize()
                 ) {
-                    Row(
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { onDismiss() }) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowLeft,
-                                contentDescription = "Back",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        IconButton(onClick = { /* Forward Mock */ }) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowRight,
-                                contentDescription = "Forward Action",
-                                tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        IconButton(onClick = {
-                            viewModel.navigateActiveTab(settings.homeUrl, context)
-                            onDismiss()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Home,
-                                contentDescription = "Home Page Launcher",
-                                tint = Color(0xFF0066FF),
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
+                            .width((tabWidth).dp)
+                            .fillMaxHeight()
+                            .offset(x = indicatorOffset)
+                            .background(itemBg, shape = RoundedCornerShape(20.dp))
+                            .border(1.dp, itemBorder, RoundedCornerShape(20.dp))
+                    )
+                }
+                
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    listOf("All", "Ongoing", "Complete").forEachIndexed { index, title ->
                         Box(
                             modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable {
-                                    viewModel.showTabsOverview.value = true
-                                    onDismiss()
-                                }
-                                .padding(8.dp),
+                                .weight(1f)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { selectedTab = index }
+                                .padding(vertical = 12.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .border(
-                                        width = 2.dp,
-                                        color = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = tabsList.size.toString(),
-                                    fontFamily = activeFont,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                )
-                            }
-                        }
-                        IconButton(onClick = {
-                            viewModel.showMenuDrawer.value = true
-                            onDismiss()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Menu,
-                                contentDescription = "Menu Drawer",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(26.dp)
+                            Text(
+                                text = title,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (selectedTab == index) textMain else textMuted,
+                                fontFamily = activeFont
                             )
                         }
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Lists with Smooth Transition
+            AnimatedContent(
+                targetState = filteredDownloads,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                },
+                label = "Download List Transition"
+            ) { items ->
+                if (items.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                        Text("No Downloads", color = textMuted, fontFamily = activeFont, fontSize = 15.sp)
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items.forEach { downloadItem ->
+                            var isMenuExpanded by remember { mutableStateOf(false) }
+                            val isCompleted = downloadItem.status == "COMPLETED"
+                            val isDownloading = downloadItem.status == "DOWNLOADING"
+                            val progress = if (downloadItem.totalBytes > 0) downloadItem.downloadedBytes.toFloat() / downloadItem.totalBytes.toFloat() else 0f
+                            val animatedProgress by animateFloatAsState(targetValue = progress, animationSpec = tween(300, easing = LinearEasing), label = "")
+                            val baseIconTint = if (downloadItem.status == "FAILED") dangerColor else if (isDownloading) accentColor else successColor
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(itemBg, RoundedCornerShape(20.dp))
+                                    .border(1.dp, itemBorder, RoundedCornerShape(20.dp))
+                                    .clickable {
+                                        if (isCompleted) {
+                                            openDownloadedFile(context, downloadItem.filePath, downloadItem.mimeType)
+                                        }
+                                    }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .background(baseIconTint.copy(alpha = 0.1f), RoundedCornerShape(14.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(getFileTypeIcon(downloadItem.fileName, downloadItem.status), contentDescription = null, tint = baseIconTint, modifier = Modifier.size(24.dp))
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(downloadItem.fileName, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = textMain, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = activeFont)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    if (isCompleted || downloadItem.status == "FAILED") {
+                                        Text("${formatBytes(downloadItem.totalBytes)} • ${downloadItem.status}", fontSize = 13.sp, color = textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = activeFont)
+                                    } else {
+                                        Row {
+                                            Text(downloadItem.status, fontSize = 13.sp, color = textMuted, fontFamily = activeFont)
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(6.dp)
+                                                .background(if(isDark) Color(0x1AFFFFFF) else Color(0x0D000000), RoundedCornerShape(3.dp))
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth(animatedProgress.coerceIn(0f, 1f))
+                                                    .fillMaxHeight()
+                                                    .background(baseIconTint, RoundedCornerShape(3.dp))
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+
+                                // Real Functionality: Select and Delete dropdown
+                                Box {
+                                    IconButton(onClick = { isMenuExpanded = true }) {
+                                        Icon(Icons.Default.MoreVert, contentDescription = "More", tint = textMain, modifier = Modifier.size(24.dp))
+                                    }
+                                    DropdownMenu(
+                                        expanded = isMenuExpanded,
+                                        onDismissRequest = { isMenuExpanded = false },
+                                        modifier = Modifier.background(glassBg)
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Delete file", color = dangerColor, fontFamily = activeFont) },
+                                            onClick = {
+                                                isMenuExpanded = false
+                                                viewModel.deleteDownload(downloadItem.id)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Top Bar Gap + Search Bar
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp)
+                .padding(
+                    start = if (isTablet) 100.dp else 16.dp, 
+                    end = 16.dp
+                )
+                .fillMaxWidth()
+                .background(glassBg, RoundedCornerShape(28.dp))
+                .border(1.5f.dp, glassBorder, RoundedCornerShape(28.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Search, contentDescription = "Search", tint = textMuted, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            androidx.compose.foundation.text.BasicTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    color = textMain,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontFamily = activeFont
+                ),
+                modifier = Modifier.weight(1f).focusRequester(searchFocusRequester),
+                singleLine = true,
+                decorationBox = { innerTextField ->
+                    if (searchQuery.isEmpty()) {
+                        Text("Search downloads", color = textMuted, fontWeight = FontWeight.Medium, fontSize = 16.sp, fontFamily = activeFont)
+                    }
+                    innerTextField()
+                }
+            )
+            if (searchQuery.isNotEmpty()) {
+                IconButton(
+                    onClick = { searchQuery = "" },
+                    modifier = Modifier.size(20.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = textMuted, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+
+        // Adaptive Navigation Bar
+        AdaptiveNavLayout(
+            isTablet = isTablet,
+            modifier = if (isTablet) {
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 16.dp)
+                    .width(68.dp)
+                    .fillMaxHeight(0.6f)
+                    .background(glassBg, RoundedCornerShape(34.dp))
+                    .border(1.5f.dp, glassBorder, RoundedCornerShape(34.dp))
+                    .padding(vertical = 24.dp)
+            } else {
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp)
+                    .padding(horizontal = 24.dp)
+                    .fillMaxWidth()
+                    .background(glassBg, RoundedCornerShape(34.dp))
+                    .border(1.5f.dp, glassBorder, RoundedCornerShape(34.dp))
+                    .padding(horizontal = 24.dp, vertical = 8.dp)
+            }
+        ) {
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Back", tint = textMain, modifier = Modifier.size(26.dp))
+            }
+            IconButton(onClick = { }) {
+                Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Forward", tint = textMain, modifier = Modifier.size(26.dp))
+            }
+            IconButton(onClick = { 
+                viewModel.navigateActiveTab("https://search.stormx.ninja/", context)
+                onDismiss() 
+            }) {
+                Icon(Icons.Default.Home, contentDescription = "Home", tint = textMain, modifier = Modifier.size(26.dp))
+            }
+            IconButton(onClick = { searchFocusRequester.requestFocus() }) {
+                Icon(Icons.Default.Search, contentDescription = "Search", tint = textMain, modifier = Modifier.size(26.dp))
+            }
+            IconButton(onClick = { }) {
+                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = accentColor, modifier = Modifier.size(26.dp))
             }
         }
     }
 }
-
 
 // Select suitable file icon type based on suffix safely using core material icons
 fun getFileTypeIcon(fileName: String, status: String): ImageVector {
@@ -4665,9 +4885,12 @@ fun getWebsiteThemedColor(url: String?): Color {
 }
 
 // Helpers for ColorOS 16 Adaptive Interceptor layout
-fun isHomepageUrl(url: String?): Boolean {
+fun isHomepageUrl(url: String?, settings: BrowserSettings? = null): Boolean {
     if (url == null) return true
     val trimmed = url.trim().lowercase()
+    if (settings != null && (trimmed == settings.homeUrl.trim().lowercase() || trimmed == settings.homeUrl.trim().lowercase().dropLastWhile { it == '/' })) {
+        return true
+    }
     return trimmed.isEmpty() ||
            trimmed == "homepage" ||
            trimmed == "about:blank" ||
@@ -4865,91 +5088,6 @@ fun SpeedDialUI(
                         .size(24.dp)
                         .clickable { onNavigate(searchQuery) }
                 )
-            }
-        }
-
-        // Section Title: Speed Dial / Top Sites
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp, start = 8.dp),
-            horizontalArrangement = Arrangement.Start
-        ) {
-            Text(
-                text = trans("Active Engines & Top Sites"),
-                fontFamily = fontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                color = if (isDark) Color.White else Color(0xFF1C1C1E)
-            )
-        }
-
-        // Expanded list of premium search engine websites + directory links
-        val primaryWebsites = listOf(
-            DialItemData("StormX", "https://search.stormx.ninja", Color(0xFFFF1B2D), Icons.Default.Search),
-            DialItemData("Google", "https://www.google.com", Color(0xFF4285F4), Icons.Default.Search),
-            DialItemData("DuckDuckGo", "https://duckduckgo.com", Color(0xFFDE5833), Icons.Default.Search),
-            DialItemData("Bing", "https://www.bing.com", Color(0xFF0083B0), Icons.Default.Search),
-            DialItemData("Yahoo", "https://search.yahoo.com", Color(0xFF6001D2), Icons.Default.Search),
-            DialItemData("Wikipedia", "https://wikipedia.org", if (isDark) Color(0xFFE6E6E6) else Color(0xFF1C1C1E), Icons.Default.Public)
-        )
-
-        // Fixed 2 x 4 layout (exactly 4 columns)
-        val columns = 4
-        val chunked = primaryWebsites.chunked(columns)
-
-        Column(
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            chunked.forEach { rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    rowItems.forEach { item ->
-                        Box(
-                            modifier = Modifier.weight(1f),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.clickable { onNavigate(item.url) }
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(glassCardColor(isDark))
-                                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = item.icon,
-                                        contentDescription = item.label,
-                                        tint = item.color,
-                                        modifier = Modifier.size(28.dp)
-                                    )
-                                }
-                                Text(
-                                    text = item.label,
-                                    fontFamily = fontFamily,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-
-                    // Add empty structural boxes if row has fewer items than column count
-                    val missingAmount = columns - rowItems.size
-                    repeat(missingAmount) {
-                        Box(modifier = Modifier.weight(1f))
-                    }
-                }
             }
         }
     }
