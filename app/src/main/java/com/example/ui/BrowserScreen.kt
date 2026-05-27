@@ -192,6 +192,17 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val showShield by viewModel.showShieldPanel.collectAsState()
     val showMenuDrawer by viewModel.showMenuDrawer.collectAsState()
     val imageDownloadProposal by viewModel.imageDownloadProposal.collectAsState()
+    val permissionProposal by viewModel.permissionRequestProposal.collectAsState()
+    
+    val multiplePermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.values.all { it }
+        viewModel.handlePermissionProposal(allGranted)
+        if (!allGranted) {
+            android.widget.Toast.makeText(context, "OS Permissions Denied", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
     
     val isAnyDrawerOpen = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showShield || showMenuDrawer
 
@@ -841,7 +852,6 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 )
             }
 
-            val permissionProposal by viewModel.permissionRequestProposal.collectAsState()
             permissionProposal?.let { proposal ->
                 val involvesCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
                 val involvesMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
@@ -850,7 +860,17 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     onDismissRequest = { viewModel.handlePermissionProposal(false) },
                     confirmButton = {
                         Button(
-                            onClick = { viewModel.handlePermissionProposal(true) },
+                            onClick = {
+                                val permissionsToRequest = mutableListOf<String>()
+                                if (involvesCamera) permissionsToRequest.add(android.Manifest.permission.CAMERA)
+                                if (involvesMic) permissionsToRequest.add(android.Manifest.permission.RECORD_AUDIO)
+                                
+                                if (permissionsToRequest.isNotEmpty()) {
+                                    multiplePermissionLauncher.launch(permissionsToRequest.toTypedArray())
+                                } else {
+                                    viewModel.handlePermissionProposal(true)
+                                }
+                            },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = MaterialTheme.colorScheme.onPrimary
@@ -1585,6 +1605,36 @@ fun ShieldDashboardSheet(
             "this website"
         }
     } ?: "this website"
+
+    val locationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) viewModel.toggleWebsiteLocation(currentDomain, true)
+        else {
+            android.widget.Toast.makeText(context, "Location Permission Denied", android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.toggleWebsiteLocation(currentDomain, false)
+        }
+    }
+
+    val cameraPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) viewModel.toggleWebsiteCamera(currentDomain, true)
+        else {
+            android.widget.Toast.makeText(context, "Camera Permission Denied", android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.toggleWebsiteCamera(currentDomain, false)
+        }
+    }
+
+    val micPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) viewModel.toggleWebsiteMicrophone(currentDomain, true)
+        else {
+            android.widget.Toast.makeText(context, "Microphone Permission Denied", android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.toggleWebsiteMicrophone(currentDomain, false)
+        }
+    }
     
     val notificationsAllowed = permissionsList.any { it.domain == currentDomain && it.notificationsAllowed }
 
@@ -1611,6 +1661,7 @@ fun ShieldDashboardSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(androidx.compose.foundation.rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
             // Branded ColorOS 16 style premium Header
@@ -1906,7 +1957,10 @@ fun ShieldDashboardSheet(
                         .clip(RoundedCornerShape(18.dp))
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
-                        .clickable { viewModel.toggleWebsiteLocation(currentDomain, !activePerm.locationAllowed) }
+                        .clickable { 
+                            if (!activePerm.locationAllowed) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            else viewModel.toggleWebsiteLocation(currentDomain, false)
+                        }
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1937,7 +1991,10 @@ fun ShieldDashboardSheet(
                     }
                     Switch(
                         checked = activePerm.locationAllowed,
-                        onCheckedChange = { viewModel.toggleWebsiteLocation(currentDomain, !activePerm.locationAllowed) },
+                        onCheckedChange = { 
+                            if (!activePerm.locationAllowed) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            else viewModel.toggleWebsiteLocation(currentDomain, false)
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = MaterialTheme.colorScheme.primary
@@ -1952,7 +2009,10 @@ fun ShieldDashboardSheet(
                         .clip(RoundedCornerShape(18.dp))
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
-                        .clickable { viewModel.toggleWebsiteCamera(currentDomain, !activePerm.cameraAllowed) }
+                        .clickable { 
+                            if (!activePerm.cameraAllowed) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            else viewModel.toggleWebsiteCamera(currentDomain, false)
+                        }
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1983,7 +2043,10 @@ fun ShieldDashboardSheet(
                     }
                     Switch(
                         checked = activePerm.cameraAllowed,
-                        onCheckedChange = { viewModel.toggleWebsiteCamera(currentDomain, !activePerm.cameraAllowed) },
+                        onCheckedChange = { 
+                            if (!activePerm.cameraAllowed) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            else viewModel.toggleWebsiteCamera(currentDomain, false)
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = MaterialTheme.colorScheme.primary
@@ -1998,7 +2061,10 @@ fun ShieldDashboardSheet(
                         .clip(RoundedCornerShape(18.dp))
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
-                        .clickable { viewModel.toggleWebsiteMicrophone(currentDomain, !activePerm.microphoneAllowed) }
+                        .clickable { 
+                            if (!activePerm.microphoneAllowed) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            else viewModel.toggleWebsiteMicrophone(currentDomain, false)
+                        }
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -2029,7 +2095,10 @@ fun ShieldDashboardSheet(
                     }
                     Switch(
                         checked = activePerm.microphoneAllowed,
-                        onCheckedChange = { viewModel.toggleWebsiteMicrophone(currentDomain, !activePerm.microphoneAllowed) },
+                        onCheckedChange = { 
+                            if (!activePerm.microphoneAllowed) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            else viewModel.toggleWebsiteMicrophone(currentDomain, false)
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = MaterialTheme.colorScheme.primary
