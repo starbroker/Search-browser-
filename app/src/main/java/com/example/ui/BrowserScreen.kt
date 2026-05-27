@@ -274,6 +274,14 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
         }
     }
     
+    androidx.activity.compose.BackHandler(enabled = showSettings) { viewModel.showSettings.value = false }
+    androidx.activity.compose.BackHandler(enabled = showHistory) { viewModel.showHistory.value = false }
+    androidx.activity.compose.BackHandler(enabled = showBookmarks) { viewModel.showBookmarks.value = false }
+    androidx.activity.compose.BackHandler(enabled = showDownloads) { viewModel.showDownloads.value = false }
+    androidx.activity.compose.BackHandler(enabled = showTabs) { viewModel.showTabsOverview.value = false }
+    androidx.activity.compose.BackHandler(enabled = showMenuDrawer) { viewModel.showMenuDrawer.value = false }
+    androidx.activity.compose.BackHandler(enabled = showShield) { viewModel.showShieldPanel.value = false }
+    
     androidx.activity.compose.BackHandler(enabled = activeTab?.canGoBack == true && !showTabs && !showSettings && !showBookmarks && !showHistory && !showDownloads && !showMenuDrawer && !showShield) {
         viewModel.activeTabGoBack(context)
     }
@@ -354,7 +362,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 )
                             }
 
-                            // Dynamic Progress Bar Indicator (Aquamorphic Fluid Design Accent)
+                            // Dynamic Progress Bar Indicator 
                             AnimatedVisibility(
                                 visible = activeTab?.isLoading == true,
                                 enter = fadeIn() + expandVertically(),
@@ -460,7 +468,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             )
                         }
 
-                        // Dynamic Progress Bar Indicator (Aquamorphic Fluid Design Accent)
+                        // Dynamic Progress Bar Indicator 
                         AnimatedVisibility(
                             visible = activeTab?.isLoading == true,
                             enter = fadeIn() + expandVertically(),
@@ -855,6 +863,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             permissionProposal?.let { proposal ->
                 val involvesCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
                 val involvesMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                val involvesLocation = proposal.geoCallback != null
 
                 AlertDialog(
                     onDismissRequest = { viewModel.handlePermissionProposal(false) },
@@ -864,6 +873,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 val permissionsToRequest = mutableListOf<String>()
                                 if (involvesCamera) permissionsToRequest.add(android.Manifest.permission.CAMERA)
                                 if (involvesMic) permissionsToRequest.add(android.Manifest.permission.RECORD_AUDIO)
+                                if (involvesLocation) permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
                                 
                                 if (permissionsToRequest.isNotEmpty()) {
                                     multiplePermissionLauncher.launch(permissionsToRequest.toTypedArray())
@@ -887,14 +897,14 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     },
                     icon = {
                         Icon(
-                            imageVector = if (involvesCamera && involvesMic) Icons.Default.Videocam else if (involvesCamera) Icons.Default.Videocam else Icons.Default.Mic,
+                            imageVector = if (involvesCamera && involvesMic) Icons.Default.Videocam else if (involvesCamera) Icons.Default.Videocam else if (involvesMic) Icons.Default.Mic else Icons.Default.LocationOn,
                             contentDescription = "Permission Request",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(36.dp)
                         )
                     },
                     title = {
-                        val requestedResourceText = if (involvesCamera && involvesMic) "Camera & Microphone" else if (involvesCamera) "Camera" else "Microphone"
+                        val requestedResourceText = if (involvesCamera && involvesMic) "Camera & Microphone" else if (involvesCamera) "Camera" else if (involvesMic) "Microphone" else if (involvesLocation) "Location" else "Unknown Resource"
                         Text(
                             text = "Allow $requestedResourceText?",
                             fontFamily = activeFont,
@@ -3378,56 +3388,6 @@ fun SettingsSheet(
                                     )
                                 )
                             }
-
-                            HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
-
-                            // Engine Mode toggle
-                            val forceSimulatedMode by viewModel.forceSimulatedMode.collectAsState()
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { viewModel.setForceSimulatedMode(!forceSimulatedMode) }
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(Color(0xFFFF9500).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = "Engine Mode Icon",
-                                        tint = Color(0xFFFF9500),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Aquamorphic Light Engine",
-                                        fontFamily = activeFont,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 16.sp,
-                                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                    )
-                                    Text(
-                                        text = if (forceSimulatedMode) "Simulated Browser (Crash-safe mode active)" else "Native WebView Engine",
-                                        fontFamily = activeFont,
-                                        fontSize = 12.sp,
-                                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
-                                    )
-                                }
-                                Switch(
-                                    checked = forceSimulatedMode,
-                                    onCheckedChange = { viewModel.setForceSimulatedMode(it) },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White,
-                                        checkedTrackColor = Color(0xFFFF9500)
-                                    )
-                                )
-                            }
                         }
                     }
                 }
@@ -3925,7 +3885,7 @@ fun ColumnScope.AppearanceSubPage(
                                 color = if (isDark) Color.White else Color(0xFF1C1C1E)
                             )
                             Text(
-                                text = "ColorOS Aquamorphic palette",
+                                text = "Custom Theme Color",
                                 fontFamily = activeFont,
                                 fontSize = 12.sp,
                                 color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
@@ -4897,6 +4857,61 @@ fun DownloadsPage(
 
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
+    var itemToDelete by remember { mutableStateOf<DownloadItem?>(null) }
+    var deleteFromStorage by remember { mutableStateOf(false) }
+
+    if (itemToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text("Delete Download", fontFamily = activeFont, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Are you sure you want to remove this download from your history?", fontFamily = activeFont)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically, 
+                        modifier = Modifier.clickable { deleteFromStorage = !deleteFromStorage }
+                    ) {
+                        Checkbox(
+                            checked = deleteFromStorage,
+                            onCheckedChange = { deleteFromStorage = it }
+                        )
+                        Text("Delete file from device", fontFamily = activeFont)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val item = itemToDelete
+                        if (item != null) {
+                            if (deleteFromStorage) {
+                                try {
+                                    val file = java.io.File(item.filePath)
+                                    if (file.exists()) {
+                                        file.delete()
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
+                            viewModel.deleteDownload(item.id)
+                        }
+                        itemToDelete = null
+                        deleteFromStorage = false
+                    }
+                ) {
+                    Text("Delete", color = dangerColor, fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text("Cancel", fontFamily = activeFont)
+                }
+            }
+        )
+    }
+
     Surface(
         modifier = Modifier
             .fillMaxSize()
@@ -5039,7 +5054,9 @@ fun DownloadsPage(
                                         Text("${formatBytes(downloadItem.totalBytes)} • ${downloadItem.status}", fontSize = 13.sp, color = textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = activeFont)
                                     } else {
                                         val speed = viewModel.downloadSpeeds[downloadItem.id] ?: "Active"
-                                        Text("${downloadItem.status} • $speed", fontSize = 13.sp, color = textMuted, fontFamily = activeFont)
+                                        val eta = viewModel.downloadEtas[downloadItem.id]
+                                        val statusText = if (eta != null) "${downloadItem.status} • $speed • $eta" else "${downloadItem.status} • $speed"
+                                        Text(statusText, fontSize = 13.sp, color = textMuted, fontFamily = activeFont)
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Box(
                                             modifier = Modifier
@@ -5099,7 +5116,8 @@ fun DownloadsPage(
                                             text = { Text("Delete file", color = dangerColor, fontFamily = activeFont) },
                                             onClick = {
                                                 isMenuExpanded = false
-                                                viewModel.deleteDownload(downloadItem.id)
+                                                itemToDelete = downloadItem
+                                                deleteFromStorage = false
                                             }
                                         )
                                     }
@@ -5761,8 +5779,10 @@ fun FloatingIOSDownloadHUD(
                                 trackColor = if (isDark) Color(0xFF2C2C2F) else Color(0xFFE5E5EA)
                             )
                             Spacer(modifier = Modifier.height(2.dp))
+                            val eta = viewModel.downloadEtas[displayItem.id]
+                            val infoText = if (eta != null) "Speed: $speed • $eta • ${formatBytes(displayItem.downloadedBytes)} of ${formatBytes(displayItem.totalBytes)}" else "Speed: $speed • ${formatBytes(displayItem.downloadedBytes)} of ${formatBytes(displayItem.totalBytes)}"
                             Text(
-                                text = "Speed: $speed • ${formatBytes(displayItem.downloadedBytes)} of ${formatBytes(displayItem.totalBytes)}",
+                                text = infoText,
                                 fontFamily = activeFont,
                                 fontSize = 10.sp,
                                 color = if (isDark) Color.White.copy(alpha = 0.5f) else Color(0xFF6E6E73)
@@ -6176,7 +6196,7 @@ fun FallbackBrowserSimulator(
                             Spacer(modifier = Modifier.height(12.dp))
 
                             androidx.compose.material3.Text(
-                                text = trans("Since this host container does not have an active Android WebView system package, our Aquamorphic Simulator intercepted the request securely to allow browsing, bookmarking, and local research without crashing."),
+                                text = trans("Since this host container does not have an active Android WebView system package, our custom Simulator intercepted the request securely to allow browsing, bookmarking, and local research without crashing."),
                                 fontFamily = fontFamily,
                                 fontSize = 13.sp,
                                 lineHeight = 19.sp,

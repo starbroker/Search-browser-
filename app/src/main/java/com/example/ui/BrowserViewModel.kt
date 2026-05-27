@@ -189,14 +189,17 @@ class BrowserViewModel(
     
     data class PermissionProposal(
         val domain: String,
-        val request: android.webkit.PermissionRequest,
-        val resourcesNeeded: List<String>
+        val request: android.webkit.PermissionRequest? = null,
+        val resourcesNeeded: List<String> = emptyList(),
+        val geoCallback: android.webkit.GeolocationPermissions.Callback? = null,
+        val geoOrigin: String? = null
     )
     val permissionRequestProposal = MutableStateFlow<PermissionProposal?>(null)
     val allowedInBrowserUrls = mutableSetOf<String>()
 
-    // Live download speeds track
+    // Live download speeds and times track
     val downloadSpeeds = mutableStateMapOf<Int, String>()
+    val downloadEtas = mutableStateMapOf<Int, String>()
 
     // iOS-style notifications state
     data class IosNotification(
@@ -675,7 +678,16 @@ class BrowserViewModel(
                     if (origin == null || callback == null) return
                     val domain = getDomainFromUrl(origin)
                     val allowed = websitePermissions.value.find { it.domain == domain }?.locationAllowed ?: false
-                    callback.invoke(origin, allowed, false)
+                    
+                    if (allowed) {
+                        callback.invoke(origin, true, false)
+                    } else {
+                        permissionRequestProposal.value = PermissionProposal(
+                            domain = domain,
+                            geoCallback = callback,
+                            geoOrigin = origin
+                        )
+                    }
                 }
             }
 
@@ -721,15 +733,23 @@ class BrowserViewModel(
         val proposal = permissionRequestProposal.value ?: return
         if (grant) {
             try {
-                proposal.request.grant(proposal.resourcesNeeded.toTypedArray())
+                proposal.request?.grant(proposal.resourcesNeeded.toTypedArray())
             } catch (e: Exception) {}
+            try {
+                proposal.geoCallback?.invoke(proposal.geoOrigin, true, false)
+            } catch (e: Exception) {}
+            
             val needsCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
             val needsMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
             if (needsCamera) toggleWebsiteCamera(proposal.domain, true)
             if (needsMic) toggleWebsiteMicrophone(proposal.domain, true)
+            if (proposal.geoCallback != null) toggleWebsiteLocation(proposal.domain, true)
         } else {
             try {
-                proposal.request.deny()
+                proposal.request?.deny()
+            } catch (e: Exception) {}
+            try {
+                proposal.geoCallback?.invoke(proposal.geoOrigin, false, false)
             } catch (e: Exception) {}
         }
         permissionRequestProposal.value = null
@@ -1039,6 +1059,8 @@ class BrowserViewModel(
                         addRequestHeader("User-Agent", userAgent)
                         setDescription("Downloading from StormX Browser")
                         setTitle(fileName)
+                        setAllowedOverMetered(true)
+                        setAllowedOverRoaming(true)
                         setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                         setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
                     }
@@ -1084,23 +1106,58 @@ class BrowserViewModel(
     
                                 if (speed != null) {
                                     val speedText = formatSpeed(speed)
+                                    val etaText = if (speed > 0 && totalBytes > 0 && totalBytes > bytesDownloaded) formatEta((totalBytes - bytesDownloaded) / speed) else ""
                                     withContext(Dispatchers.Main) {
                                         downloadSpeeds[downloadId] = speedText
+                                        if (etaText.isNotEmpty()) {
+                                            downloadEtas[downloadId] = etaText
+                                        } else {
+                                            downloadEtas.remove(downloadId)
+                                        }
                                     }
                                 }
-    
+
+                                // Update Android notification dynamically
+                                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                    val channel = android.app.NotificationChannel("stormx_downloads", "StormX Downloads", android.app.NotificationManager.IMPORTANCE_LOW)
+                                    notificationManager.createNotificationChannel(channel)
+                                }
+                                val progressPercent = if (totalBytes > 0) (bytesDownloaded * 100 / totalBytes).toInt() else 0
+                                val notifText = if (speed != null) "Downloading... ${formatSpeed(speed)}" else "Downloading..."
+                                
+                                val builder = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
+                                    .setContentTitle(fileName)
+                                    .setContentText(notifText)
+                                    .setSmallIcon(android.R.drawable.stat_sys_download)
+                                    .setOngoing(true)
+                                    .setProgress(100, progressPercent, totalBytes <= 0)
+                                    .setOnlyAlertOnce(true)
+                                
+                                notificationManager.notify(downloadId, builder.build())
+
                                 val mappedStatus = when (status) {
                                     DownloadManager.STATUS_RUNNING -> "DOWNLOADING"
                                     DownloadManager.STATUS_SUCCESSFUL -> {
                                         isRunning = false
-                                        withContext(Dispatchers.Main) {
-                                        }
+                                        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                                        val builder = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
+                                            .setContentTitle(fileName)
+                                            .setContentText("Download Complete")
+                                            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                                            .setAutoCancel(true)
+                                        notificationManager.notify(downloadId, builder.build())
                                         "COMPLETED"
                                     }
                                     DownloadManager.STATUS_FAILED -> {
                                         isRunning = false
-                                        withContext(Dispatchers.Main) {
-                                        }
+                                        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                                        val builder = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
+                                            .setContentTitle(fileName)
+                                            .setContentText("Download Failed")
+                                            .setSmallIcon(android.R.drawable.stat_notify_error)
+                                            .setAutoCancel(true)
+                                        notificationManager.notify(downloadId, builder.build())
                                         "FAILED"
                                     }
                                     DownloadManager.STATUS_PAUSED -> "PAUSED"
@@ -1127,6 +1184,7 @@ class BrowserViewModel(
                         // Cleanup speed display on termination
                         withContext(Dispatchers.Main) {
                             downloadSpeeds.remove(downloadId)
+                            downloadEtas.remove(downloadId)
                         }
                     }
     
@@ -1158,6 +1216,17 @@ class BrowserViewModel(
         if (kb < 1024) return String.format(java.util.Locale.US, "%.1f KB/s", kb)
         val mb = kb / 1024f
         return String.format(java.util.Locale.US, "%.1f MB/s", mb)
+    }
+
+    private fun formatEta(seconds: Long): String {
+        if (seconds <= 0) return ""
+        if (seconds < 60) return "${seconds}s left"
+        val minutes = seconds / 60
+        val remainingSeconds = seconds % 60
+        if (minutes < 60) return "${minutes}m ${remainingSeconds}s left"
+        val hours = minutes / 60
+        val remainingMinutes = minutes % 60
+        return "${hours}h ${remainingMinutes}m left"
     }
 
     fun deleteHistory(id: Int) {
