@@ -680,7 +680,7 @@ class BrowserViewModel(
                     val allowed = websitePermissions.value.find { it.domain == domain }?.locationAllowed ?: false
                     
                     if (allowed) {
-                        callback.invoke(origin, true, false)
+                        callback.invoke(origin, true, true)
                     } else {
                         permissionRequestProposal.value = PermissionProposal(
                             domain = domain,
@@ -736,7 +736,7 @@ class BrowserViewModel(
                 proposal.request?.grant(proposal.resourcesNeeded.toTypedArray())
             } catch (e: Exception) {}
             try {
-                proposal.geoCallback?.invoke(proposal.geoOrigin, true, false)
+                proposal.geoCallback?.invoke(proposal.geoOrigin, true, true)
             } catch (e: Exception) {}
             
             val needsCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
@@ -749,7 +749,7 @@ class BrowserViewModel(
                 proposal.request?.deny()
             } catch (e: Exception) {}
             try {
-                proposal.geoCallback?.invoke(proposal.geoOrigin, false, false)
+                proposal.geoCallback?.invoke(proposal.geoOrigin, false, true)
             } catch (e: Exception) {}
         }
         permissionRequestProposal.value = null
