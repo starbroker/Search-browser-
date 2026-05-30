@@ -198,7 +198,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
         androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val allGranted = permissions.values.all { it }
-        viewModel.handlePermissionProposal(allGranted)
+        viewModel.handlePermissionProposal(allGranted, true)
         if (!allGranted) {
             android.widget.Toast.makeText(context, "OS Permissions Denied", android.widget.Toast.LENGTH_SHORT).show()
         }
@@ -282,8 +282,23 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     androidx.activity.compose.BackHandler(enabled = showMenuDrawer) { viewModel.showMenuDrawer.value = false }
     androidx.activity.compose.BackHandler(enabled = showShield) { viewModel.showShieldPanel.value = false }
     
-    androidx.activity.compose.BackHandler(enabled = activeTab?.canGoBack == true && !showTabs && !showSettings && !showBookmarks && !showHistory && !showDownloads && !showMenuDrawer && !showShield) {
-        viewModel.activeTabGoBack(context)
+    val handledByOverlays = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showMenuDrawer || showShield
+    val canGoBackInWebView = activeTab?.canGoBack == true
+    val isNotHomepage = !isHomepageUrl(activeTab?.url, settings)
+    val hasMultipleTabs = tabsList.size > 1
+
+    androidx.activity.compose.BackHandler(enabled = !handledByOverlays && (canGoBackInWebView || isNotHomepage || hasMultipleTabs)) {
+        if (canGoBackInWebView) {
+            viewModel.activeTabGoBack(context)
+        } else if (hasMultipleTabs) {
+            val activeId = activeTab?.id
+            if (activeId != null) {
+                viewModel.removeTab(activeId)
+            }
+        } else {
+            viewModel.navigateActiveTab(settings.homeUrl, context)
+            viewModel.activeTabClearHistory()
+        }
     }
 
     CompositionLocalProvider(LocalAppLanguage provides settings.language) {
@@ -402,7 +417,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                             }
                                         )
                                     } else if (isWebViewSupported == true) {
-                                        key(activeTabId) {
+                                        key(activeTabId, webViewTrigger) {
                                             AndroidView<android.webkit.WebView>(
                                                 factory = { ctx ->
                                                     try {
@@ -414,6 +429,9 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                                         viewModel.markWebViewUnsupported()
                                                         android.webkit.WebView(ctx)
                                                     }
+                                                },
+                                                onRelease = { view ->
+                                                    (view.parent as? android.view.ViewGroup)?.removeView(view)
                                                 },
                                                 modifier = Modifier.fillMaxSize()
                                             )
@@ -508,7 +526,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                         }
                                     )
                                 } else if (isWebViewSupported == true) {
-                                    key(activeTabId) {
+                                    key(activeTabId, webViewTrigger) {
                                         AndroidView<android.webkit.WebView>(
                                             factory = { ctx ->
                                                 try {
@@ -520,6 +538,9 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                                     viewModel.markWebViewUnsupported()
                                                     android.webkit.WebView(ctx)
                                                 }
+                                            },
+                                            onRelease = { view ->
+                                                (view.parent as? android.view.ViewGroup)?.removeView(view)
                                             },
                                             modifier = Modifier.fillMaxSize()
                                         )
@@ -866,7 +887,9 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 val involvesLocation = proposal.geoCallback != null
 
                 AlertDialog(
-                    onDismissRequest = { viewModel.handlePermissionProposal(false) },
+                    onDismissRequest = { 
+                        viewModel.handlePermissionProposal(false, true)
+                    },
                     confirmButton = {
                         Button(
                             onClick = {
@@ -878,7 +901,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 if (permissionsToRequest.isNotEmpty()) {
                                     multiplePermissionLauncher.launch(permissionsToRequest.toTypedArray())
                                 } else {
-                                    viewModel.handlePermissionProposal(true)
+                                    viewModel.handlePermissionProposal(true, true)
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(
@@ -891,7 +914,9 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { viewModel.handlePermissionProposal(false) }) {
+                        TextButton(onClick = { 
+                            viewModel.handlePermissionProposal(false, true)
+                        }) {
                             Text("Deny", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     },
@@ -915,13 +940,18 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                         )
                     },
                     text = {
-                        Text(
-                            text = "${proposal.domain} wants to use your device's features.",
-                            fontFamily = activeFont,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "${proposal.domain} wants to use your device's features.",
+                                fontFamily = activeFont,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     },
                     shape = RoundedCornerShape(24.dp),
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -1401,7 +1431,7 @@ fun MenuDrawerSheet(
                         activeFont = activeFont,
                         isDark = isDark,
                         onClick = {
-                            viewModel.updateThemeMode(if (isDark) "LIGHT" else "DARK")
+                            viewModel.updateThemeMode(if (isDark) "LIGHT" else "DARK", context as? android.app.Activity)
                         }
                     )
                 }
@@ -1646,7 +1676,7 @@ fun ShieldDashboardSheet(
         }
     }
     
-    val notificationsAllowed = permissionsList.any { it.domain == currentDomain && it.notificationsAllowed }
+    val notificationsAllowed = permissionsList.any { it.domain == currentDomain && it.notificationsAllowed == true }
 
     val totalAds = settings.totalAdsBlocked
     val totalTrackers = settings.totalTrackersBlocked
@@ -1902,7 +1932,7 @@ fun ShieldDashboardSheet(
                 }
 
                 // Website Permissions Section
-                val activePerm = permissionsList.find { it.domain == currentDomain } ?: com.example.data.WebsitePermission(domain = currentDomain, notificationsAllowed = false, locationAllowed = false, cameraAllowed = false, microphoneAllowed = false)
+                val activePerm = permissionsList.find { it.domain == currentDomain } ?: WebsitePermission(domain = currentDomain, notificationsAllowed = false, locationAllowed = false, cameraAllowed = false, microphoneAllowed = false)
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -1921,7 +1951,7 @@ fun ShieldDashboardSheet(
                         .clip(RoundedCornerShape(18.dp))
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
-                        .clickable { viewModel.toggleWebsiteNotification(currentDomain, !activePerm.notificationsAllowed) }
+                        .clickable { viewModel.toggleWebsiteNotification(currentDomain, activePerm.notificationsAllowed != true) }
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1945,14 +1975,14 @@ fun ShieldDashboardSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Allow Website Notifications", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
-                            text = if (activePerm.notificationsAllowed) "Allowed for $currentDomain" else "Receive instant updates from $currentDomain",
+                            text = if (activePerm.notificationsAllowed == true) "Allowed for $currentDomain" else "Receive instant updates from $currentDomain",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                     Switch(
-                        checked = activePerm.notificationsAllowed,
-                        onCheckedChange = { viewModel.toggleWebsiteNotification(currentDomain, !activePerm.notificationsAllowed) },
+                        checked = activePerm.notificationsAllowed == true,
+                        onCheckedChange = { viewModel.toggleWebsiteNotification(currentDomain, activePerm.notificationsAllowed != true) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = MaterialTheme.colorScheme.primary
@@ -1968,7 +1998,7 @@ fun ShieldDashboardSheet(
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
                         .clickable { 
-                            if (!activePerm.locationAllowed) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            if (activePerm.locationAllowed != true) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
                             else viewModel.toggleWebsiteLocation(currentDomain, false)
                         }
                         .padding(16.dp),
@@ -1994,15 +2024,15 @@ fun ShieldDashboardSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Allow Location Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
-                            text = if (activePerm.locationAllowed) "Location permission active" else "Allow site to ask for location",
+                            text = if (activePerm.locationAllowed == true) "Location permission active" else "Allow site to ask for location",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                     Switch(
-                        checked = activePerm.locationAllowed,
+                        checked = activePerm.locationAllowed == true,
                         onCheckedChange = { 
-                            if (!activePerm.locationAllowed) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            if (activePerm.locationAllowed != true) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
                             else viewModel.toggleWebsiteLocation(currentDomain, false)
                         },
                         colors = SwitchDefaults.colors(
@@ -2020,7 +2050,7 @@ fun ShieldDashboardSheet(
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
                         .clickable { 
-                            if (!activePerm.cameraAllowed) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            if (activePerm.cameraAllowed != true) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
                             else viewModel.toggleWebsiteCamera(currentDomain, false)
                         }
                         .padding(16.dp),
@@ -2046,15 +2076,15 @@ fun ShieldDashboardSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Allow Camera Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
-                            text = if (activePerm.cameraAllowed) "Camera permission active" else "Allow site to ask for camera",
+                            text = if (activePerm.cameraAllowed == true) "Camera permission active" else "Allow site to ask for camera",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                     Switch(
-                        checked = activePerm.cameraAllowed,
+                        checked = activePerm.cameraAllowed == true,
                         onCheckedChange = { 
-                            if (!activePerm.cameraAllowed) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            if (activePerm.cameraAllowed != true) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
                             else viewModel.toggleWebsiteCamera(currentDomain, false)
                         },
                         colors = SwitchDefaults.colors(
@@ -2072,7 +2102,7 @@ fun ShieldDashboardSheet(
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
                         .clickable { 
-                            if (!activePerm.microphoneAllowed) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            if (activePerm.microphoneAllowed != true) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                             else viewModel.toggleWebsiteMicrophone(currentDomain, false)
                         }
                         .padding(16.dp),
@@ -2098,15 +2128,15 @@ fun ShieldDashboardSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Allow Microphone Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
-                            text = if (activePerm.microphoneAllowed) "Microphone permission active" else "Allow site to ask for microphone",
+                            text = if (activePerm.microphoneAllowed == true) "Microphone permission active" else "Allow site to ask for microphone",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                     Switch(
-                        checked = activePerm.microphoneAllowed,
+                        checked = activePerm.microphoneAllowed == true,
                         onCheckedChange = { 
-                            if (!activePerm.microphoneAllowed) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            if (activePerm.microphoneAllowed != true) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                             else viewModel.toggleWebsiteMicrophone(currentDomain, false)
                         },
                         colors = SwitchDefaults.colors(
@@ -2858,7 +2888,13 @@ fun SettingsSheet(
     val webPerms by viewModel.websitePermissions.collectAsState()
 
     var showAppearancePage by remember { mutableStateOf(false) }
+    var showSearchEnginePage by remember { mutableStateOf(false) }
+    var showLanguagesPage by remember { mutableStateOf(false) }
     var settingsSearchQuery by remember { mutableStateOf("") }
+
+    androidx.activity.compose.BackHandler(enabled = showAppearancePage) { showAppearancePage = false }
+    androidx.activity.compose.BackHandler(enabled = showSearchEnginePage) { showSearchEnginePage = false }
+    androidx.activity.compose.BackHandler(enabled = showLanguagesPage) { showLanguagesPage = false }
 
     val query = settingsSearchQuery.trim().lowercase()
 
@@ -2907,6 +2943,22 @@ fun SettingsSheet(
                     activeFont = activeFont,
                     isDark = isDark,
                     onBack = { showAppearancePage = false }
+                )
+            } else if (showSearchEnginePage) {
+                SearchEngineSubPage(
+                    viewModel = viewModel,
+                    settings = settings,
+                    activeFont = activeFont,
+                    isDark = isDark,
+                    onBack = { showSearchEnginePage = false }
+                )
+            } else if (showLanguagesPage) {
+                LanguagesSubPage(
+                    viewModel = viewModel,
+                    settings = settings,
+                    activeFont = activeFont,
+                    isDark = isDark,
+                    onBack = { showLanguagesPage = false }
                 )
             } else {
                 // 1. Sleek Search Header (Top-bar)
@@ -3007,148 +3059,97 @@ fun SettingsSheet(
                             .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            // Search Engine Selection Area
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Search,
-                                            contentDescription = "Search Icon",
-                                            tint = Color(0xFF0066FF),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "Search Engine",
-                                            fontFamily = activeFont,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                        )
-                                        val displayEngine = if (settings.searchEngine == "search.stormx.ninja") "StormX Search" else settings.searchEngine
-                                        Text(
-                                            text = "Active: $displayEngine",
-                                            fontFamily = activeFont,
-                                            fontSize = 12.sp,
-                                            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
+                            // Search Engine Option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showSearchEnginePage = true }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState())
-                                        .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
-                                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
-                                        .padding(4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .size(36.dp)
+                                        .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    listOf("StormX", "Google", "Bing", "Yahoo", "DuckDuckGo").forEach { engineName ->
-                                        val engineValue = if (engineName == "StormX") "search.stormx.ninja" else engineName
-                                        val isSelected = settings.searchEngine == engineValue
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
-                                                .clickable { viewModel.updateSearchEngine(engineValue, context) }
-                                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = engineName,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                fontFamily = activeFont,
-                                                color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
-                                            )
-                                        }
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = "Search Icon",
+                                        tint = Color(0xFF0066FF),
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Search Engine",
+                                        fontFamily = activeFont,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                    )
+                                    val displayEngine = if (settings.searchEngine == "search.stormx.ninja") "StormX Search" else settings.searchEngine
+                                    Text(
+                                        text = "Active: $displayEngine",
+                                        fontFamily = activeFont,
+                                        fontSize = 12.sp,
+                                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowRight,
+                                    contentDescription = "Go to Search Engine Data",
+                                    tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
 
                             HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
 
-                            // Languages Selection Area
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Language,
-                                            contentDescription = "Language Icon",
-                                            tint = Color(0xFF0066FF),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "Languages",
-                                            fontFamily = activeFont,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                        )
-                                        Text(
-                                            text = "Active: ${settings.language}",
-                                            fontFamily = activeFont,
-                                            fontSize = 12.sp,
-                                            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
+                            // Languages Option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showLanguagesPage = true }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState())
-                                        .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
-                                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
-                                        .padding(4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .size(36.dp)
+                                        .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    listOf("English (US)", "简体中文", "Español", "Deutsch", "Français").forEach { lang ->
-                                        val isSelected = settings.language == lang
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
-                                                .clickable { viewModel.updateLanguage(lang) }
-                                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = lang,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                fontFamily = activeFont,
-                                                color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
-                                            )
-                                        }
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.Language,
+                                        contentDescription = "Language Icon",
+                                        tint = Color(0xFF0066FF),
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Languages",
+                                        fontFamily = activeFont,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                    )
+                                    Text(
+                                        text = "Active: ${settings.language}",
+                                        fontFamily = activeFont,
+                                        fontSize = 12.sp,
+                                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowRight,
+                                    contentDescription = "Go to Language Data",
+                                    tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                     }
@@ -3393,11 +3394,11 @@ fun SettingsSheet(
                 }
                 }
 
-                // 4. WEBSITE NOTIFICATIONS GROUP
+                // 4. SITE PERMISSIONS GROUP
                 if (showNotificationGroup) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = "WEBSITE NOTIFICATIONS",
+                            text = "SITE PERMISSIONS",
                             fontFamily = activeFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
@@ -3419,7 +3420,7 @@ fun SettingsSheet(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "Allowed Notifications",
+                                        text = "Saved Preferences",
                                         fontFamily = activeFont,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
@@ -3446,8 +3447,8 @@ fun SettingsSheet(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Notifications,
-                                                contentDescription = "Notification Allowed Icon",
+                                                imageVector = Icons.Default.Security,
+                                                contentDescription = "Site Permissions",
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(18.dp)
                                             )
@@ -3460,8 +3461,15 @@ fun SettingsSheet(
                                                     fontSize = 14.sp,
                                                     color = if (isDark) Color.White else Color(0xFF1C1C1E)
                                                 )
+                                                val activeTextList = mutableListOf<String>()
+                                                if (perm.notificationsAllowed != null) activeTextList.add("Notifications: ${if (perm.notificationsAllowed == true) "Allowed" else "Denied"}")
+                                                if (perm.locationAllowed != null) activeTextList.add("Location: ${if (perm.locationAllowed == true) "Allowed" else "Denied"}")
+                                                if (perm.cameraAllowed != null) activeTextList.add("Camera: ${if (perm.cameraAllowed == true) "Allowed" else "Denied"}")
+                                                if (perm.microphoneAllowed != null) activeTextList.add("Microphone: ${if (perm.microphoneAllowed == true) "Allowed" else "Denied"}")
+                                                val statusText = if (activeTextList.isEmpty()) "No permissions saved" else activeTextList.joinToString(", ")
+                                                
                                                 Text(
-                                                    text = "Status: Allowed Notifications",
+                                                    text = statusText,
                                                     fontFamily = activeFont,
                                                     fontSize = 11.sp,
                                                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
@@ -3728,6 +3736,7 @@ fun ColumnScope.AppearanceSubPage(
     isDark: Boolean,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -3839,7 +3848,7 @@ fun ColumnScope.AppearanceSubPage(
                                     .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
-                                    .clickable { viewModel.updateThemeMode(mode) }
+                                    .clickable { viewModel.updateThemeMode(mode, context as? android.app.Activity) }
                                     .padding(vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -4017,6 +4026,42 @@ fun ColumnScope.AppearanceSubPage(
                             }
                         }
                     }
+                }
+
+                HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
+
+                // Text Size and Page Zoom Rows
+                var textSizeValue by remember { mutableStateOf(com.example.util.PreferenceHelper.textSize) }
+                var pageZoomValue by remember { mutableStateOf(com.example.util.PreferenceHelper.pageZoom.toFloat()) }
+                
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Text Size: ${textSizeValue.toInt()}%",
+                        fontFamily = activeFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                    )
+                    Slider(
+                        value = textSizeValue,
+                        onValueChange = { textSizeValue = it },
+                        onValueChangeFinished = { viewModel.updateTextSize(textSizeValue) },
+                        valueRange = 50f..200f
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Page Zoom: ${pageZoomValue.toInt()}%",
+                        fontFamily = activeFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                    )
+                    Slider(
+                        value = pageZoomValue,
+                        onValueChange = { pageZoomValue = it },
+                        onValueChangeFinished = { viewModel.updatePageZoom(pageZoomValue.toInt()) },
+                        valueRange = 50f..200f
+                    )
                 }
 
                 HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
@@ -5055,8 +5100,42 @@ fun DownloadsPage(
                                     } else {
                                         val speed = viewModel.downloadSpeeds[downloadItem.id] ?: "Active"
                                         val eta = viewModel.downloadEtas[downloadItem.id]
-                                        val statusText = if (eta != null) "${downloadItem.status} • $speed • $eta" else "${downloadItem.status} • $speed"
-                                        Text(statusText, fontSize = 13.sp, color = textMuted, fontFamily = activeFont)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(downloadItem.status, fontSize = 13.sp, color = textMuted, fontFamily = activeFont)
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = speed, 
+                                                    fontSize = 13.sp, 
+                                                    color = textMuted, 
+                                                    fontFamily = activeFont, 
+                                                    style = androidx.compose.ui.text.TextStyle(
+                                                        fontFeatureSettings = "tnum",
+                                                        textAlign = androidx.compose.ui.text.style.TextAlign.End
+                                                    ),
+                                                    modifier = Modifier.width(72.dp)
+                                                )
+                                                if (eta != null) {
+                                                    Text(
+                                                        text = eta, 
+                                                        fontSize = 13.sp, 
+                                                        color = textMuted, 
+                                                        fontFamily = activeFont, 
+                                                        style = androidx.compose.ui.text.TextStyle(
+                                                            fontFeatureSettings = "tnum",
+                                                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                                                        ),
+                                                        modifier = Modifier.width(52.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Box(
                                             modifier = Modifier
@@ -5421,7 +5500,7 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
     // 1. Base Gradient
     val baseBrush = if (isDark) {
         Brush.linearGradient(
-            colors = listOf(Color(0xFF0F111A), Color(0xFF08090D)),
+            colors = listOf(Color(0xFF060913), Color(0xFF111424)),
             start = androidx.compose.ui.geometry.Offset(0f, 0f),
             end = androidx.compose.ui.geometry.Offset(size.width, size.height)
         )
@@ -5435,32 +5514,48 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
     drawRect(brush = baseBrush, alpha = alpha)
 
     // 2. Top-Right Orb
-    val topRightColor = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.12f) else Color(0xFFE2D1C3)
+    val topRightColor = if (isDark) Color(0xFF2DD4BF).copy(alpha = 0.15f) else Color(0xFFE2D1C3)
     val topRightCenter = androidx.compose.ui.geometry.Offset(size.width, 0f)
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(topRightColor, Color.Transparent),
             center = topRightCenter,
-            radius = size.width * 0.8f
+            radius = size.width * 0.85f
         ),
         center = topRightCenter,
-        radius = size.width * 0.8f,
+        radius = size.width * 0.85f,
         alpha = alpha
     )
 
     // 3. Bottom-Left Orb
-    val bottomLeftColor = if (isDark) Color(0xFF818CF8).copy(alpha = 0.12f) else Color(0xFFD4E4F9)
+    val bottomLeftColor = if (isDark) Color(0xFF8B5CF6).copy(alpha = 0.15f) else Color(0xFFD4E4F9)
     val bottomLeftCenter = androidx.compose.ui.geometry.Offset(0f, size.height)
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(bottomLeftColor, Color.Transparent),
             center = bottomLeftCenter,
-            radius = size.width * 0.8f
+            radius = size.width * 0.85f
         ),
         center = bottomLeftCenter,
-        radius = size.width * 0.8f,
+        radius = size.width * 0.85f,
         alpha = alpha
     )
+    
+    // 4. Center-Right Orb (ColorOS 16 specific vibe)
+    if (isDark) {
+        val centerRightColor = Color(0xFF3B82F6).copy(alpha = 0.12f)
+        val centerRightOffset = androidx.compose.ui.geometry.Offset(size.width, size.height * 0.5f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(centerRightColor, Color.Transparent),
+                center = centerRightOffset,
+                radius = size.width * 0.7f
+            ),
+            center = centerRightOffset,
+            radius = size.width * 0.7f,
+            alpha = alpha
+        )
+    }
 }
 
 @Composable
@@ -6277,6 +6372,276 @@ fun ColorOSSearchSuggestionsOverlay(
                         fontSize = 16.sp,
                         color = if (isDark) Color.White else Color.Black
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ColumnScope.SearchEngineSubPage(
+    viewModel: BrowserViewModel,
+    settings: BrowserSettings,
+    activeFont: FontFamily,
+    isDark: Boolean,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    var customSearchUrl by remember { mutableStateOf(if (settings.searchEngine.startsWith("http")) settings.searchEngine else "") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f)
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "Back",
+                    tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(
+                text = "Search Engine",
+                fontFamily = activeFont,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 24.sp,
+                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+            )
+        }
+
+        Surface(
+            color = glassCardColor(isDark),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                val engines = listOf(
+                    "StormX" to "search.stormx.ninja",
+                    "Google" to "Google",
+                    "Bing" to "Bing",
+                    "Yahoo" to "Yahoo",
+                    "DuckDuckGo" to "DuckDuckGo",
+                    "Baidu" to "Baidu"
+                )
+
+                engines.forEachIndexed { index, (name, value) ->
+                    val isSelected = settings.searchEngine == value
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.updateSearchEngine(value, context) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = name,
+                            fontFamily = activeFont,
+                            fontSize = 16.sp,
+                            color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Active",
+                                tint = Color(0xFF0066FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    if (index < engines.size - 1) {
+                        HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = "CUSTOM SEARCH ENGINE",
+            fontFamily = activeFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
+            modifier = Modifier.padding(start = 16.dp, bottom = 0.dp)
+        )
+
+        Surface(
+            color = glassCardColor(isDark),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                OutlinedTextField(
+                    value = customSearchUrl,
+                    onValueChange = { customSearchUrl = it },
+                    placeholder = { Text("https://my-search.com/search?q=") },
+                    textStyle = LocalTextStyle.current.copy(fontFamily = activeFont),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = { if (customSearchUrl.isNotBlank()) viewModel.updateSearchEngine(customSearchUrl, context) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Set Custom Search Engine", fontFamily = activeFont)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ColumnScope.LanguagesSubPage(
+    viewModel: BrowserViewModel,
+    settings: BrowserSettings,
+    activeFont: FontFamily,
+    isDark: Boolean,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    var searchQuery by remember { mutableStateOf("") }
+    
+    val allLanguages = listOf(
+        "English", "简体中文", "Español", "Deutsch", "Français", "Italiano", "日本語", "한국어", "Русский", "Português", "Hindi", "Arabic",
+        "Türkçe", "Nederlands", "Polski", "ภาษาไทย", "Bahasa Indonesia", "Tiếng Việt", "Svenska", "Ελληνικά", "Dansk", "Suomi", "Norsk",
+        "Čeština", "Magyar", "Română", "Українська", "עברית", "Bahasa Melayu", "Filipino", "Slovenčina", "Български", "Hrvatski", "Srpski"
+    )
+    val displayLanguages = if (searchQuery.isBlank()) allLanguages else allLanguages.filter { it.contains(searchQuery, ignoreCase = true) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "Back",
+                    tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(
+                text = "Languages",
+                fontFamily = activeFont,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 24.sp,
+                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+            )
+        }
+
+        // Search Bar
+        Surface(
+            color = glassCardColor(isDark),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Search, contentDescription = null, tint = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f))
+                Spacer(modifier = Modifier.width(8.dp))
+                androidx.compose.foundation.text.BasicTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    textStyle = LocalTextStyle.current.copy(
+                        color = if (isDark) Color.White else Color.Black,
+                        fontFamily = activeFont
+                    ),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    singleLine = true,
+                    decorationBox = { innerTextField ->
+                        if (searchQuery.isEmpty()) {
+                            Text("Search languages...", color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f))
+                        }
+                        innerTextField()
+                    }
+                )
+            }
+        }
+
+        Surface(
+            color = glassCardColor(isDark),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+        ) {
+            androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.padding(16.dp)) {
+                items(displayLanguages.size) { index ->
+                    val lang = displayLanguages[index]
+                    val mappedLang = if (lang == "English") "English (US)" else lang
+                    val isSelected = settings.language == mappedLang
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.updateLanguage(mappedLang, context as? android.app.Activity) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = mappedLang,
+                            fontFamily = activeFont,
+                            fontSize = 16.sp,
+                            color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Active",
+                                tint = Color(0xFF0066FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    if (index < displayLanguages.size - 1) {
+                        HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
+                    }
                 }
             }
         }

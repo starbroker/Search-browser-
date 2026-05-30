@@ -47,3 +47,9 @@ To enable automatic signed release builds, add the following **Repository Secret
    *Example:* `myKeyPassword123`
 
 When these secrets are provided, the workflow will automatically sign the APK and append the signed release file into your GitHub Releases!
+
+---
+
+## 📄 License
+
+This open source code is licensed under the MIT License.

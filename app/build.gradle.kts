@@ -13,9 +13,9 @@ import org.gradle.api.file.RegularFileProperty
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
-  alias(libs.plugins.google.devtools.ksp)
-  alias(libs.plugins.roborazzi)
-  alias(libs.plugins.secrets)
+    alias(libs.plugins.google.devtools.ksp)
+    alias(libs.plugins.roborazzi)
+    alias(libs.plugins.secrets)
 }
 
 android {
@@ -26,8 +26,8 @@ android {
     applicationId = "com.aistudio.stormbrowser.kytrqz"
     minSdk = 24
     targetSdk = 35
-    versionCode = 3
-    versionName = "1.2"
+    versionCode = 4
+    versionName = "2.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -93,6 +93,7 @@ secrets {
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
+  implementation("androidx.appcompat:appcompat:1.6.1")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
@@ -116,6 +117,13 @@ dependencies {
   // implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
+  
+  // Security
+  implementation("androidx.security:security-crypto-ktx:1.1.0-alpha06")
+  
+  // Browser logic (Markdown parsing for changelog)
+  implementation("io.noties.markwon:core:4.6.2")
+  
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)

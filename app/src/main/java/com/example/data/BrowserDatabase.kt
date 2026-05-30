@@ -59,13 +59,12 @@ data class BrowserSettings(
     val speedDialLayout: String = "4x2 Grid" // 4x2 Grid, 3x3 Grid, 5x2 Grid
 )
 
-@Entity(tableName = "website_permissions")
-data class WebsitePermission(
-    @PrimaryKey val domain: String,
-    val notificationsAllowed: Boolean = false,
-    val locationAllowed: Boolean = false,
-    val cameraAllowed: Boolean = false,
-    val microphoneAllowed: Boolean = false,
+@Entity(tableName = "site_permissions")
+data class SitePermission(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val origin: String,
+    val permissionType: String,
+    val isGranted: Boolean,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -140,17 +139,26 @@ interface BrowserDao {
     suspend fun insertOrUpdateSettings(settings: BrowserSettings)
 
     // Website permissions
-    @Query("SELECT * FROM website_permissions ORDER BY timestamp DESC")
-    fun getAllWebsitePermissionsFlow(): Flow<List<WebsitePermission>>
+    @Query("SELECT * FROM site_permissions ORDER BY origin ASC")
+    fun getAllSitePermissionsFlow(): Flow<List<SitePermission>>
+
+    @Query("SELECT * FROM site_permissions WHERE origin = :origin AND permissionType = :type LIMIT 1")
+    suspend fun getSitePermission(origin: String, type: String): SitePermission?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertWebsitePermission(permission: WebsitePermission)
+    suspend fun insertSitePermission(permission: SitePermission)
 
-    @Query("DELETE FROM website_permissions WHERE domain = :domain")
-    suspend fun deleteWebsitePermission(domain: String)
+    @Update
+    suspend fun updateSitePermission(permission: SitePermission)
 
-    @Query("DELETE FROM website_permissions")
-    suspend fun deleteAllWebsitePermissions()
+    @Query("DELETE FROM site_permissions WHERE id = :id")
+    suspend fun deleteSitePermission(id: Int)
+
+    @Query("DELETE FROM site_permissions WHERE origin = :origin")
+    suspend fun deleteSitePermissionsByOrigin(origin: String)
+
+    @Query("DELETE FROM site_permissions")
+    suspend fun deleteAllSitePermissions()
 }
 
 @Database(
@@ -160,9 +168,9 @@ interface BrowserDao {
         HistoryItem::class, 
         DownloadItem::class, 
         BrowserSettings::class,
-        WebsitePermission::class
+        SitePermission::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class BrowserDatabase : RoomDatabase() {
