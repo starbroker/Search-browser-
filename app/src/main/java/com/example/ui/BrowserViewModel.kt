@@ -201,6 +201,11 @@ class BrowserViewModel(
         prefs.edit().putBoolean("has_seen_onboarding", true).apply()
     }
 
+    fun startOnboarding() {
+        _showOnboarding.value = true
+        showSettings.value = false
+    }
+
     init {
         // Pre-create cache directories to prevent Chromium logcat noise regarding missing opendir
         try {

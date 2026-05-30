@@ -2926,7 +2926,9 @@ fun SettingsSheet(
     val showDataGroup = query.isEmpty() ||
         "clear browsing statistics".contains(query) || "clear statistics".contains(query) || "erase history".contains(query) || "delete data".contains(query) || "clear browsing".contains(query) || "reset".contains(query)
 
-    val noSettingsFound = !showGeneralGroup && !showCustomizationGroup && !showSecurityGroup && !showNotificationGroup && !showDataGroup
+    val showAboutGroup = query.isEmpty() || "about".contains(query) || "onboarding".contains(query) || "welcome".contains(query) || "start screen".contains(query)
+
+    val noSettingsFound = !showGeneralGroup && !showCustomizationGroup && !showSecurityGroup && !showNotificationGroup && !showDataGroup && !showAboutGroup
 
     // Local wallpaper picker carousel (simulating dynamic glass wall backdrops)
     var wallpaperIndex by remember { mutableStateOf(0) }
@@ -3558,6 +3560,70 @@ fun SettingsSheet(
                                     )
                                     Text(
                                         text = "Erase history, cached pages, search keywords",
+                                        fontFamily = activeFont,
+                                        fontSize = 12.sp,
+                                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                }
+
+                // 6. ABOUT GROUP
+                if (showAboutGroup) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "ABOUT",
+                        fontFamily = activeFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
+                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+                    )
+
+                    Surface(
+                        color = glassCardColor(isDark),
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.startOnboarding()
+                                    }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(Color(0xFF38BDF8).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = "Welcome Setup Icon",
+                                        tint = Color(0xFF38BDF8),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Welcome Setup",
+                                        fontFamily = activeFont,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                    )
+                                    Text(
+                                        text = "Restart onboarding configuration",
                                         fontFamily = activeFont,
                                         fontSize = 12.sp,
                                         color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)

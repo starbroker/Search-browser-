@@ -3,17 +3,25 @@ package com.example.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.with
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,7 +57,13 @@ fun OnboardingScreen(
         AnimatedContent(
             targetState = currentPage,
             transitionSpec = {
-                fadeIn(animationSpec = tween(500)) with fadeOut(animationSpec = tween(500))
+                if (targetState > initialState) {
+                    (slideInHorizontally(animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)) { width -> width } + fadeIn(animationSpec = tween(400))) togetherWith
+                            slideOutHorizontally(animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)) { width -> -width } + fadeOut(animationSpec = tween(400))
+                } else {
+                    (slideInHorizontally(animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)) { width -> -width } + fadeIn(animationSpec = tween(400))) togetherWith
+                            slideOutHorizontally(animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)) { width -> width } + fadeOut(animationSpec = tween(400))
+                }
             },
             label = "OnboardingTransition"
         ) { page ->
@@ -75,56 +89,66 @@ fun WelcomePage(isDark: Boolean, onNext: () -> Unit) {
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        AnimatedContent(
-            targetState = currentHelloIndex,
-            transitionSpec = {
-                fadeIn(tween(800)) with fadeOut(tween(800))
-            },
-            label = "HelloTranslation"
-        ) { index ->
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            AnimatedContent(
+                targetState = currentHelloIndex,
+                transitionSpec = {
+                    (scaleIn(initialScale = 0.8f, animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.6f, stiffness = 200f)) + fadeIn(tween(600, easing = FastOutSlowInEasing))) togetherWith 
+                    (scaleOut(targetScale = 1.2f, animationSpec = tween(600, easing = FastOutSlowInEasing)) + fadeOut(tween(600, easing = FastOutSlowInEasing)))
+                },
+                label = "HelloTranslation"
+            ) { index ->
+                Text(
+                    text = languages[index],
+                    fontSize = 48.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color.White else Color.Black,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Text(
-                text = languages[index],
-                fontSize = 48.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isDark) Color.White else Color.Black,
+                text = "Welcome to StormX Browser",
+                fontSize = 18.sp,
+                color = if (isDark) Color.LightGray else Color.DarkGray,
                 textAlign = TextAlign.Center
             )
+            
+            Spacer(modifier = Modifier.height(64.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = if (isDark) listOf(Color(0xFF38BDF8), Color(0xFF818CF8)) else listOf(Color(0xFF0284C7), Color(0xFF4F46E5))
+                        )
+                    )
+                    .clickable { onNext() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next", tint = Color.White)
+            }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Welcome to StormX Browser",
-            fontSize = 18.sp,
-            color = if (isDark) Color.LightGray else Color.DarkGray,
-            textAlign = TextAlign.Center
-        )
-        
-        Spacer(modifier = Modifier.height(64.dp))
-
-        FloatingActionButton(
-            onClick = onNext,
-            containerColor = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
-            contentColor = Color.White
-        ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next")
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
         
         Text(
             text = "Developed by Himank.J",
             fontSize = 12.sp,
             color = if (isDark) Color.Gray else Color.DarkGray,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 32.dp)
         )
     }
 }
@@ -135,7 +159,18 @@ fun LanguageSelectionPage(viewModel: BrowserViewModel, isDark: Boolean, onNext: 
     val textSecondary = if (isDark) Color.LightGray else Color.DarkGray
     val cardBg = glassCardColor(isDark)
     val settings by viewModel.settings.collectAsState()
-    val availableLanguages = listOf("English (US)", "简体中文", "Español", "Deutsch", "Français")
+    
+    var searchQuery by remember { mutableStateOf("") }
+    
+    val availableLanguages = listOf(
+        "English", "简体中文", "Español", "Deutsch", "Français", "Italiano", "日本語", "한국어", "Русский", "Português", "Hindi", "Arabic",
+        "Türkçe", "Nederlands", "Polski", "ภาษาไทย", "Bahasa Indonesia", "Tiếng Việt", "Svenska", "Ελληνικά", "Dansk", "Suomi", "Norsk",
+        "Čeština", "Magyar", "Română", "Українська", "עברית", "Bahasa Melayu", "Filipino", "Slovenčina", "Български", "Hrvatski", "Srpski"
+    )
+
+    val filteredLanguages = availableLanguages.filter {
+        it.contains(searchQuery, ignoreCase = true)
+    }
 
     val selectedLang = settings.language
 
@@ -146,35 +181,59 @@ fun LanguageSelectionPage(viewModel: BrowserViewModel, isDark: Boolean, onNext: 
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Select Language / 选择语言", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = textPrimary)
-        Spacer(modifier = Modifier.height(24.dp))
+        Text("Select Language", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+        Spacer(modifier = Modifier.height(16.dp))
 
-        availableLanguages.forEach { lang ->
-            val isSelected = selectedLang == lang
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (isSelected) (if (isDark) Color(0xFF38BDF8).copy(alpha = 0.2f) else Color(0xFF0284C7).copy(alpha = 0.1f)) else cardBg)
-                    .clickable { viewModel.updateLanguage(lang, null) }
-                    .padding(16.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            placeholder = { Text("Search language...") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
+                unfocusedBorderColor = Color.Transparent,
+                focusedContainerColor = cardBg,
+                unfocusedContainerColor = cardBg
+            ),
+            singleLine = true
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            items(filteredLanguages) { lang ->
+                val isSelected = selectedLang == lang
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (isSelected) (if (isDark) Color(0xFF38BDF8).copy(alpha = 0.2f) else Color(0xFF0284C7).copy(alpha = 0.1f)) else cardBg)
+                        .clickable { viewModel.updateLanguage(lang, null) }
+                        .padding(16.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Text(lang, fontSize = 16.sp, color = textPrimary, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                    if (isSelected) {
-                        Icon(Icons.Default.Check, contentDescription = "Selected", tint = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(lang, fontSize = 16.sp, color = textPrimary, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                        if (isSelected) {
+                            Icon(Icons.Default.Check, contentDescription = "Selected", tint = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7))
+                        }
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = onNext,
@@ -192,7 +251,14 @@ fun SearchEngineSelectionPage(viewModel: BrowserViewModel, isDark: Boolean, onFi
     val textSecondary = if (isDark) Color.LightGray else Color.DarkGray
     val cardBg = glassCardColor(isDark)
     val settings by viewModel.settings.collectAsState()
-    val availableEngines = listOf("search.stormx.ninja", "Google", "Bing", "DuckDuckGo")
+    val availableEngines = listOf(
+        "StormX" to "search.stormx.ninja",
+        "Google" to "Google",
+        "Bing" to "Bing",
+        "Yahoo" to "Yahoo",
+        "DuckDuckGo" to "DuckDuckGo",
+        "Baidu" to "Baidu"
+    )
     val context = LocalContext.current
 
     val selectedEngine = settings.searchEngine
@@ -207,32 +273,40 @@ fun SearchEngineSelectionPage(viewModel: BrowserViewModel, isDark: Boolean, onFi
         Text("Select Search Engine", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = textPrimary)
         Spacer(modifier = Modifier.height(24.dp))
 
-        availableEngines.forEach { engine ->
-            val isSelected = selectedEngine == engine
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (isSelected) (if (isDark) Color(0xFF38BDF8).copy(alpha = 0.2f) else Color(0xFF0284C7).copy(alpha = 0.1f)) else cardBg)
-                    .clickable { viewModel.updateSearchEngine(engine, context) }
-                    .padding(16.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            items(availableEngines) { enginePair ->
+                val engineLabel = enginePair.first
+                val engineValue = enginePair.second
+                val isSelected = selectedEngine == engineValue
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (isSelected) (if (isDark) Color(0xFF38BDF8).copy(alpha = 0.2f) else Color(0xFF0284C7).copy(alpha = 0.1f)) else cardBg)
+                        .clickable { viewModel.updateSearchEngine(engineValue, context) }
+                        .padding(16.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Text(engine, fontSize = 16.sp, color = textPrimary, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                    if (isSelected) {
-                        Icon(Icons.Default.Check, contentDescription = "Selected", tint = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(engineLabel, fontSize = 16.sp, color = textPrimary, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                        if (isSelected) {
+                            Icon(Icons.Default.Check, contentDescription = "Selected", tint = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7))
+                        }
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = onFinish,
