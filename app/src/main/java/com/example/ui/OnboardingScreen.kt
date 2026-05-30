@@ -53,6 +53,8 @@ fun OnboardingScreen(
         modifier = Modifier
             .fillMaxSize()
             .colorOSGradientBackground(isDark)
+            .systemBarsPadding()
+            .imePadding()
     ) {
         AnimatedContent(
             targetState = currentPage,
@@ -117,7 +119,7 @@ fun WelcomePage(isDark: Boolean, onNext: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Welcome to StormX Browser",
+                text = "Welcome to Search Browser",
                 fontSize = 18.sp,
                 color = if (isDark) Color.LightGray else Color.DarkGray,
                 textAlign = TextAlign.Center
@@ -205,7 +207,7 @@ fun LanguageSelectionPage(viewModel: BrowserViewModel, isDark: Boolean, onNext: 
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .weight(1f, fill = false)
         ) {
             items(filteredLanguages) { lang ->
                 val isSelected = selectedLang == lang
@@ -252,7 +254,7 @@ fun SearchEngineSelectionPage(viewModel: BrowserViewModel, isDark: Boolean, onFi
     val cardBg = glassCardColor(isDark)
     val settings by viewModel.settings.collectAsState()
     val availableEngines = listOf(
-        "StormX" to "search.stormx.ninja",
+        "Search Browser" to "google.com",
         "Google" to "Google",
         "Bing" to "Bing",
         "Yahoo" to "Yahoo",
@@ -276,7 +278,7 @@ fun SearchEngineSelectionPage(viewModel: BrowserViewModel, isDark: Boolean, onFi
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .weight(1f, fill = false)
         ) {
             items(availableEngines) { enginePair ->
                 val engineLabel = enginePair.first

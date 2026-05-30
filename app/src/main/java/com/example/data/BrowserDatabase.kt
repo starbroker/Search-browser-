@@ -44,7 +44,7 @@ data class DownloadItem(
 @Entity(tableName = "browser_settings")
 data class BrowserSettings(
     @PrimaryKey val id: Int = 1,
-    val homeUrl: String = "https://search.stormx.ninja/",
+    val homeUrl: String = "https://google.com/",
     val themeMode: String = "SYSTEM", // LIGHT, DARK, SYSTEM
     val customThemeColor: Int = 0, // 0 means default ColorOS 16 Emerald Green, 1=Sky Blue, 2=Sunset Orange, 3=Cyber Lavender, 4=Obsidian Slate
     val fontFamily: String = "Default", // Sans-serif, Playfair, Monospace
@@ -53,7 +53,7 @@ data class BrowserSettings(
     val trackerBlockEnabled: Boolean = true,
     val totalAdsBlocked: Int = 0,
     val totalTrackersBlocked: Int = 0,
-    val searchEngine: String = "search.stormx.ninja", // search.stormx.ninja, Google, Bing, Yahoo, DuckDuckGo
+    val searchEngine: String = "google.com", // google.com, Google, Bing, Yahoo, DuckDuckGo
     val language: String = "English (US)", // English (US), 简体中文, Español, Deutsch, Français
     val fluidAnimationsEnabled: Boolean = true,
     val speedDialLayout: String = "4x2 Grid" // 4x2 Grid, 3x3 Grid, 5x2 Grid
@@ -185,7 +185,7 @@ abstract class BrowserDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     BrowserDatabase::class.java,
-                    "stormx_browser_db"
+                    "search_browser_db"
                 )
                 .fallbackToDestructiveMigration(true)
                 .build()

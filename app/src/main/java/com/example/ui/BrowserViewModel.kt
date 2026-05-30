@@ -425,18 +425,18 @@ class BrowserViewModel(
                 addNewTab(initialSettings.homeUrl)
             } else {
                 _tabs.value = dbTabs.map { tab ->
-                    val finalUrl = if (tab.url == "homepage") "https://search.stormx.ninja/" else tab.url
+                    val finalUrl = if (tab.url == "homepage") "https://google.com/" else tab.url
                     TabState(id = tab.id, url = finalUrl, title = tab.title)
                 }
                 _activeTabId.value = dbTabs.first().id
                 val firstUrl = dbTabs.first().url
-                _currentUrlInput.value = if (firstUrl == "homepage") "https://search.stormx.ninja/" else firstUrl
+                _currentUrlInput.value = if (firstUrl == "homepage") "https://google.com/" else firstUrl
             }
         }
     }
 
     // Tab Management
-    fun addNewTab(url: String = "https://search.stormx.ninja/") {
+    fun addNewTab(url: String = "https://google.com/") {
         viewModelScope.launch {
             val title = "New Tab"
             val id = repository.addTab(url, title)
@@ -665,7 +665,7 @@ class BrowserViewModel(
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     url?.let {
-                        val title = view?.title ?: "StormX Search"
+                        val title = view?.title ?: "Search Browser"
                         updateTabProperties(
                             tabId, 
                             url = it, 
@@ -693,7 +693,7 @@ class BrowserViewModel(
                     webViewMap.remove(tabId)
                     _webViewUpdateTrigger.value += 1
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                        val currentUrl = _tabs.value.find { it.id == tabId }?.url ?: "https://search.stormx.ninja"
+                        val currentUrl = _tabs.value.find { it.id == tabId }?.url ?: "https://google.com/"
                         val newView = getOrCreateWebView(tabId, context)
                         newView.loadUrl(currentUrl)
                         _webViewUpdateTrigger.value += 1
@@ -797,7 +797,7 @@ class BrowserViewModel(
         
         // Load initial url
         val currentTab = _tabs.value.find { it.id == tabId }
-        webView.loadUrl(currentTab?.url ?: "https://search.stormx.ninja")
+        webView.loadUrl(currentTab?.url ?: "https://google.com/")
         return webView
     }
 
@@ -928,7 +928,7 @@ class BrowserViewModel(
                         if (engine.startsWith("http")) {
                             "${engine}${Uri.encode(formattedUrl)}"
                         } else {
-                            "https://search.stormx.ninja/search?q=${Uri.encode(formattedUrl)}"
+                            "https://google.com/search?q=${Uri.encode(formattedUrl)}"
                         }
                     }
                 }
@@ -1084,9 +1084,9 @@ class BrowserViewModel(
                 "Yahoo" -> "https://www.yahoo.com/"
                 "DuckDuckGo" -> "https://duckduckgo.com/"
                 "Baidu" -> "https://www.baidu.com/"
-                "search.stormx.ninja" -> "https://search.stormx.ninja/"
+                "google.com" -> "https://google.com/"
                 else -> {
-                    if (engine.startsWith("http")) engine else "https://search.stormx.ninja/"
+                    if (engine.startsWith("http")) engine else "https://google.com/"
                 }
             }
             // Update the stateflow directly to prevent the race condition
@@ -1231,7 +1231,7 @@ class BrowserViewModel(
                     val request = DownloadManager.Request(Uri.parse(url)).apply {
                         setMimeType(mimeType)
                         addRequestHeader("User-Agent", userAgent)
-                        setDescription("Downloading from StormX Browser")
+                        setDescription("Downloading from Search Browser")
                         setTitle(fileName)
                         setAllowedOverMetered(true)
                         setAllowedOverRoaming(true)
@@ -1256,7 +1256,7 @@ class BrowserViewModel(
     
                         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                            val channel = android.app.NotificationChannel("stormx_downloads", "StormX Downloads", android.app.NotificationManager.IMPORTANCE_LOW)
+                            val channel = android.app.NotificationChannel("search_downloads", "Search Browser Downloads", android.app.NotificationManager.IMPORTANCE_LOW)
                             notificationManager.createNotificationChannel(channel)
                         }
 
