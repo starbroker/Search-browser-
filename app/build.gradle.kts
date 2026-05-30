@@ -37,15 +37,6 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.10"
     }
-    applicationVariants.all {
-        val variantName = name
-        val versionName = versionName
-        outputs.all {
-            if (this is com.android.build.gradle.internal.api.BaseVariantOutputImpl) {
-                outputFileName = "app-${variantName}-v${versionName}.apk"
-            }
-        }
-    }
 }
 
 dependencies {

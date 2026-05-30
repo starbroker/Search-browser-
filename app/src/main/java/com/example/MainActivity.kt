@@ -2,10 +2,14 @@ package com.example
 
 import android.content.Context
 import android.os.Bundle
+import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,25 +24,32 @@ import androidx.compose.ui.viewinterop.AndroidView
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         
         val sharedPrefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         val initialOnboarded = sharedPrefs.getBoolean("onboarded", false)
 
         setContent {
             MaterialTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    var hasOnboarded by remember { mutableStateOf(initialOnboarded) }
+                Scaffold(
+                    modifier = Modifier.fillMaxSize()
+                ) { innerPadding ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        var hasOnboarded by remember { mutableStateOf(initialOnboarded) }
 
-                    if (hasOnboarded) {
-                        WebViewScreen()
-                    } else {
-                        OnboardingScreen(onComplete = {
-                            sharedPrefs.edit().putBoolean("onboarded", true).apply()
-                            hasOnboarded = true
-                        })
+                        if (hasOnboarded) {
+                            WebViewScreen()
+                        } else {
+                            OnboardingScreen(onComplete = {
+                                sharedPrefs.edit().putBoolean("onboarded", true).apply()
+                                hasOnboarded = true
+                            })
+                        }
                     }
                 }
             }
@@ -111,9 +122,22 @@ fun WebViewScreen() {
     AndroidView(
         factory = { context ->
             WebView(context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                webViewClient = WebViewClient()
+                webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                        val url = request?.url?.toString() ?: return false
+                        if (url.startsWith("http://") || url.startsWith("https://")) {
+                            return false
+                        }
+                        return true
+                    }
+                }
+                webChromeClient = WebChromeClient()
                 loadUrl("https://search.stormx.ninja/")
             }
         },
