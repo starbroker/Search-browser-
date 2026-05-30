@@ -420,8 +420,10 @@ class BrowserViewModel(
                 if (viewToDestroy != null) {
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                         try {
+                            viewToDestroy.clearFocus()
                             viewToDestroy.loadUrl("about:blank")
                             (viewToDestroy.parent as? android.view.ViewGroup)?.removeView(viewToDestroy)
+                            viewToDestroy.removeAllViews()
                             viewToDestroy.destroy()
                         } catch (e: Throwable) {}
                     }, 1000) // Increase delay to let Compose unmount and ensure input channel detaches
@@ -630,8 +632,12 @@ class BrowserViewModel(
                 ): Boolean {
                     // Recover from out of memory or webview engine crashes
                     if (view != null) {
-                        (view.parent as? android.view.ViewGroup)?.removeView(view)
-                        view.destroy()
+                        try {
+                            view.clearFocus()
+                            (view.parent as? android.view.ViewGroup)?.removeView(view)
+                            view.removeAllViews()
+                            view.destroy()
+                        } catch (e: Exception) {}
                     }
                     webViewMap.remove(tabId)
                     _webViewUpdateTrigger.value += 1
@@ -1473,8 +1479,12 @@ class BrowserViewModel(
         super.onCleared()
         // Safely destroy WebViews on activity clear to prevent memory leaks and parent view state crashes
         webViewMap.forEach { (_, webView) ->
-            (webView.parent as? android.view.ViewGroup)?.removeView(webView)
-            webView.destroy()
+            try {
+                webView.clearFocus()
+                (webView.parent as? android.view.ViewGroup)?.removeView(webView)
+                webView.removeAllViews()
+                webView.destroy()
+            } catch (e: Exception) {}
         }
         webViewMap.clear()
     }
