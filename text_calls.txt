@@ -1,0 +1,140 @@
+68:    return BrowserTranslator.translateText(text, lang)
+72:fun Text(
+91:    androidx.compose.material3.Text(
+133:        androidx.compose.material3.Text(
+487:                                    android.widget.Toast.makeText(context, "App not installed, loading in browser", android.widget.Toast.LENGTH_SHORT).show()
+496:                            Text("Open App", fontFamily = activeFont, fontWeight = FontWeight.Bold)
+505:                            Text("Stay in Browser", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
+517:                        Text(
+526:                        Text(
+631:                        Text(
+812:                    Text(
+886:                Text(
+1017:                        Text(
+1075:            Text(
+1150:                    Text(
+1157:                    Text(
+1190:                        Text(
+1197:                        Text(
+1214:                        Text(
+1221:                        Text(
+1267:                        Text("Ad-Blocking Protection", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+1268:                        Text("Stop intrusive ads and malicious popups", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+1309:                        Text("Anti-Tracker Shield", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+1310:                        Text("Prevent tracking pixels from recording cookies", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+1326:                Text(
+1364:                        Text("Allow Website Notifications", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+1365:                        Text(
+1410:                        Text("Allow Location Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+1411:                        Text(
+1456:                        Text("Allow Camera Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+1457:                        Text(
+1502:                        Text("Allow Microphone Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+1503:                        Text(
+1595:                            Text(
+1631:                    Text(
+1680:                            Text(
+1768:                                                Text(
+1777:                                            Text(
+1896:                        Text(
+2018:                                Text(
+2063:                Text(
+2075:                    Text(
+2111:                                        Text(
+2119:                                        Text(
+2151:                                            Text(
+2185:                                        Text(
+2192:                                        Text(
+2223:                                            Text(
+2242:                    Text(
+2282:                                    Text(
+2289:                                    Text(
+2329:                                    Text(
+2336:                                    Text(
+2360:                    Text(
+2400:                                    Text(
+2407:                                    Text(
+2449:                                    Text(
+2456:                                    Text(
+2499:                                    Text(
+2506:                                    Text(
+2530:                        Text(
+2552:                                    Text(
+2560:                                        Text(
+2587:                                                Text(
+2594:                                                Text(
+2623:                    Text(
+2665:                                    Text(
+2672:                                    Text(
+2702:                            Text(
+2738:                                Text(
+2747:                                Text("OK", color = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+2830:                                Text(
+2894:            Text(
+2903:        Text(
+2940:                            Text(
+2947:                            Text(
+2977:                                Text(
+3011:                            Text(
+3018:                            Text(
+3067:        Text(
+3104:                            Text(
+3111:                            Text(
+3141:                                Text(
+3175:                            Text(
+3182:                            Text(
+3212:                                Text(
+3292:                            Text(
+3339:                    Text(
+3411:                                    Text(
+3422:                                    Text(
+3431:                                    Text(
+3532:                                Text(
+3591:            title = { Text("Clear All History", fontFamily = activeFont, fontWeight = FontWeight.Bold) },
+3592:            text = { Text("Are you sure you want to permanently delete all browsing logs?", fontFamily = activeFont) },
+3598:                    Text("Clear All", color = Color(0xFFFF3B30), fontFamily = activeFont, fontWeight = FontWeight.Bold)
+3603:                    Text("Cancel", fontFamily = activeFont)
+3647:                            Text(
+3694:                    Text(
+3732:                            Text(
+3773:                                    Text(
+3782:                                    Text(
+3883:                                Text(
+3972:                Text("Downloads", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = textMain, fontFamily = activeFont)
+4020:                            Text(
+4054:                        Text("ColorOS_16_Beta.apk", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = textMain, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = activeFont)
+4057:                            Text("1.2 GB • Completed", fontSize = 13.sp, color = textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = activeFont)
+4060:                                Text("Downloading... ", fontSize = 13.sp, color = textMuted, fontFamily = activeFont)
+4061:                                Text("34 MB/s", fontSize = 13.sp, color = accentColor, fontFamily = activeFont)
+4092:                        Text("${(animatedProgress * 100).toInt()}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = textMain, fontFamily = activeFont)
+4116:                        Text("Aquamorphic_Wallpaper_4K.jpg", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = textMain, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = activeFont)
+4118:                        Text("4.8 MB • Yesterday", fontSize = 13.sp, color = textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = activeFont)
+4153:                        Text("UI_Spec_Document.pdf", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = textMain, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = activeFont)
+4155:                        Text("850 KB • May 20", fontSize = 13.sp, color = textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = activeFont)
+4198:            Text("Search downloads", color = textMuted, fontWeight = FontWeight.Medium, fontSize = 16.sp, modifier = Modifier.weight(1f), fontFamily = activeFont)
+4259:        android.widget.Toast.makeText(context, "Cannot direct launch: Saved file at $filePath", android.widget.Toast.LENGTH_LONG).show()
+4279:        Text(
+4474:            Text(
+4484:        Text(
+4518:                    Text(
+4577:            Text(
+4634:                                Text(
+4794:                            Text(
+4802:                                Text(
+4812:                        Text(
+4839:                            Text(
+4846:                            Text(
+4867:                            Text(
+5002:                    Text(
+5010:                    Text(
+5093:                    androidx.compose.material3.Text(
+5109:                    androidx.compose.material3.Text(
+5151:                                    androidx.compose.material3.Text(
+5160:                                androidx.compose.material3.Text(
+5197:                            androidx.compose.material3.Text(
+5204:                            androidx.compose.material3.Text(
+5232:                                androidx.compose.material3.Text(
+5243:                            androidx.compose.material3.Text(
+5253:                            androidx.compose.material3.Text(
+5270:                                Text("Go Home")
+5329:                    Text(
