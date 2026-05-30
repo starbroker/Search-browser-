@@ -418,20 +418,25 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                         )
                                     } else if (isWebViewSupported == true) {
                                         key(activeTabId, webViewTrigger) {
-                                            AndroidView<android.webkit.WebView>(
+                                            AndroidView<android.widget.FrameLayout>(
                                                 factory = { ctx ->
-                                                    try {
-                                                        val webView = viewModel.getOrCreateWebView(activeTabId, ctx)
-                                                        val parent = webView.parent as? android.view.ViewGroup
-                                                        parent?.removeView(webView)
-                                                        webView
-                                                    } catch (e: Throwable) {
-                                                        viewModel.markWebViewUnsupported()
-                                                        android.webkit.WebView(ctx)
+                                                    android.widget.FrameLayout(ctx).apply {
+                                                        layoutParams = android.view.ViewGroup.LayoutParams(
+                                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                                        )
+                                                        try {
+                                                            val webView = viewModel.getOrCreateWebView(activeTabId, ctx)
+                                                            val parent = webView.parent as? android.view.ViewGroup
+                                                            parent?.removeView(webView)
+                                                            addView(webView)
+                                                        } catch (e: Throwable) {
+                                                            viewModel.markWebViewUnsupported()
+                                                        }
                                                     }
                                                 },
-                                                onRelease = { view ->
-                                                    (view.parent as? android.view.ViewGroup)?.removeView(view)
+                                                onRelease = { frame ->
+                                                    frame.removeAllViews()
                                                 },
                                                 modifier = Modifier.fillMaxSize()
                                             )
@@ -527,20 +532,25 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                     )
                                 } else if (isWebViewSupported == true) {
                                     key(activeTabId, webViewTrigger) {
-                                        AndroidView<android.webkit.WebView>(
+                                        AndroidView<android.widget.FrameLayout>(
                                             factory = { ctx ->
-                                                try {
-                                                    val webView = viewModel.getOrCreateWebView(activeTabId, ctx)
-                                                    val parent = webView.parent as? android.view.ViewGroup
-                                                    parent?.removeView(webView)
-                                                    webView
-                                                } catch (e: Throwable) {
-                                                    viewModel.markWebViewUnsupported()
-                                                    android.webkit.WebView(ctx)
+                                                android.widget.FrameLayout(ctx).apply {
+                                                    layoutParams = android.view.ViewGroup.LayoutParams(
+                                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                                    )
+                                                    try {
+                                                        val webView = viewModel.getOrCreateWebView(activeTabId, ctx)
+                                                        val parent = webView.parent as? android.view.ViewGroup
+                                                        parent?.removeView(webView)
+                                                        addView(webView)
+                                                    } catch (e: Throwable) {
+                                                        viewModel.markWebViewUnsupported()
+                                                    }
                                                 }
                                             },
-                                            onRelease = { view ->
-                                                (view.parent as? android.view.ViewGroup)?.removeView(view)
+                                            onRelease = { frame ->
+                                                frame.removeAllViews()
                                             },
                                             modifier = Modifier.fillMaxSize()
                                         )
