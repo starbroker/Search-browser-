@@ -9,6 +9,13 @@ class BrowserApplication : Application() {
         super.onCreate()
         PreferenceHelper.init(this)
         applyThemeMode(PreferenceHelper.themeMode)
+        
+        try {
+            val wasmDir = java.io.File(cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
+            val jsDir = java.io.File(cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
+            if (!wasmDir.exists()) wasmDir.mkdirs()
+            if (!jsDir.exists()) jsDir.mkdirs()
+        } catch (e: Exception) {}
     }
 
     companion object {
