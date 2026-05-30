@@ -1,3 +1,4 @@
+@file:OptIn(ExperimentalAnimationApi::class)
 package com.example.ui
 
 import androidx.compose.animation.AnimatedContent
