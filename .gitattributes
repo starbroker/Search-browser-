@@ -1,0 +1,18 @@
+# Set default behavior to normalize line endings to Unix (lf) for text files
+* text eol=lf
+
+# Explicitly mark binary files so Git does not change their line endings
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.bin binary
+*.zip binary
+
+# Scripts should use specific line endings
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf

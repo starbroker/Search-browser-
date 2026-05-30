@@ -1,142 +1,112 @@
 package com.example
 
+import android.app.Application
 import android.content.Context
 import android.os.Bundle
-import android.view.ViewGroup
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.BrowserDatabase
+import com.example.data.BrowserRepository
+import com.example.ui.BrowserScreen
+import com.example.ui.BrowserViewModel
+import com.example.ui.theme.SearchAppTheme
+import com.example.util.PreferenceHelper
+import android.content.ContextWrapper
+import android.content.res.Configuration
+import android.os.LocaleList
+import java.util.Locale
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        PreferenceHelper.init(newBase)
+        val language = PreferenceHelper.language
+        val locale = when (language) {
+            "简体中文" -> Locale.SIMPLIFIED_CHINESE
+            "Español" -> Locale("es")
+            "Deutsch" -> Locale("de")
+            "Français" -> Locale("fr")
+            else -> Locale("en") // English (US)
+        }
+        val config = Configuration(newBase.resources.configuration)
+        
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            val localeList = LocaleList(locale)
+            LocaleList.setDefault(localeList)
+            config.setLocales(localeList)
+        } else {
+            Locale.setDefault(locale)
+            config.setLocale(locale)
+        }
+        val context = newBase.createConfigurationContext(config)
+        super.attachBaseContext(context)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         
-        val sharedPrefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        val initialOnboarded = sharedPrefs.getBoolean("onboarded", false)
+        // Custom edge-to-edge drawing capabilities (ColorOS 16 Full Bleed look)
+        enableEdgeToEdge()
+
+        // Local Room persistence wiring
+        val database = BrowserDatabase.getDatabase(applicationContext)
+        val repository = BrowserRepository(database.browserDao())
 
         setContent {
-            MaterialTheme {
-                Scaffold(
-                    modifier = Modifier.fillMaxSize()
-                ) { innerPadding ->
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        var hasOnboarded by remember { mutableStateOf(initialOnboarded) }
+            // Instantiate ViewModel using context safe factory supplier
+            val browserViewModel: BrowserViewModel = viewModel(
+                factory = BrowserViewModelFactory(application, repository)
+            )
 
-                        if (hasOnboarded) {
-                            WebViewScreen()
-                        } else {
-                            OnboardingScreen(onComplete = {
-                                sharedPrefs.edit().putBoolean("onboarded", true).apply()
-                                hasOnboarded = true
-                            })
-                        }
-                    }
-                }
+            val settings by browserViewModel.settings.collectAsState()
+            var onboardingComplete by androidx.compose.runtime.remember { 
+                androidx.compose.runtime.mutableStateOf(PreferenceHelper.isOnboardingComplete) 
             }
-        }
-    }
-}
 
-@Composable
-fun OnboardingScreen(onComplete: () -> Unit) {
-    var selectedLanguage by remember { mutableStateOf<String?>(null) }
-    val languages = listOf("English", "Spanish", "French", "German", "Hindi", "Japanese", "Korean", "Chinese")
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(32.dp))
-        Text(
-            text = "Welcome",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Please select your language:",
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(languages) { language ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { selectedLanguage = language }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            SearchAppTheme(settings = settings) {
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.background
                 ) {
-                    RadioButton(
-                        selected = selectedLanguage == language,
-                        onClick = { selectedLanguage = language }
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(text = language, style = MaterialTheme.typography.bodyLarge)
+                    androidx.compose.runtime.CompositionLocalProvider(com.example.ui.LocalAppLanguage provides settings.language) {
+                        if (onboardingComplete) {
+                            BrowserScreen(viewModel = browserViewModel)
+                        } else {
+                            com.example.ui.onboarding.OnboardingFlow(
+                                viewModel = browserViewModel,
+                                onComplete = {
+                                    PreferenceHelper.isOnboardingComplete = true
+                                    onboardingComplete = true
+                                    this@MainActivity.recreate()
+                                }
+                            )
+                        }
+                    }
                 }
             }
-        }
-        
-        // Hide next button if no language is selected
-        if (selectedLanguage != null) {
-            Button(
-                onClick = onComplete,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp)
-            ) {
-                Text("Next")
-            }
-        } else {
-            // Keep the space so layout doesn't shift abruptly
-            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
 
-@Composable
-fun WebViewScreen() {
-    AndroidView(
-        factory = { context ->
-            WebView(context).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                        val url = request?.url?.toString() ?: return false
-                        if (url.startsWith("http://") || url.startsWith("https://")) {
-                            return false
-                        }
-                        return true
-                    }
-                }
-                webChromeClient = WebChromeClient()
-                loadUrl("https://search.stormx.ninja/")
-            }
-        },
-        modifier = Modifier.fillMaxSize()
-    )
+// Custom lifecycle provider safe factory supplying the dynamic Repo state
+class BrowserViewModelFactory(
+    private val application: Application,
+    private val repository: BrowserRepository
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(BrowserViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return BrowserViewModel(application, repository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class representation")
+    }
 }

@@ -1,6 +1,6 @@
 {
-  "name": "search",
-  "description": "Premium minimalist web browser featuring lightning-fast secure lookup integrated with Search (https://search.stormx.ninja/).",
+  "name": "Search",
+  "description": "Next-generation Android browser with fluid color gradients, frosted glass UI, and iOS-level interaction smoothness.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
