@@ -64,55 +64,6 @@ class BrowserViewModel(
     private val _forceSimulatedMode = MutableStateFlow<Boolean>(false)
     val forceSimulatedMode: StateFlow<Boolean> = _forceSimulatedMode.asStateFlow()
 
-    private fun isEmulator(): Boolean {
-        return true
-        val finger = android.os.Build.FINGERPRINT.lowercase()
-        val model = android.os.Build.MODEL.lowercase()
-        val brand = android.os.Build.BRAND.lowercase()
-        val device = android.os.Build.DEVICE.lowercase()
-        val product = android.os.Build.PRODUCT.lowercase()
-        val hardware = android.os.Build.HARDWARE.lowercase()
-        val board = android.os.Build.BOARD.lowercase()
-        val manufacturer = android.os.Build.MANUFACTURER.lowercase()
-        
-        return finger.startsWith("generic") ||
-                finger.startsWith("unknown") ||
-                finger.contains("test-keys") ||
-                model.contains("google_sdk") ||
-                model.contains("emulator") ||
-                model.contains("android sdk") ||
-                model.contains("virtual") ||
-                model.contains("gphone") ||
-                model.contains("sdk") ||
-                brand.startsWith("generic") ||
-                brand.startsWith("unknown") ||
-                device.startsWith("generic") ||
-                device.contains("vsoc") ||
-                device.contains("emulator") ||
-                device.contains("vbox") ||
-                device.contains("cutf") ||
-                device.contains("cuttlefish") ||
-                product.contains("google_sdk") ||
-                product.contains("sdk_gphone") ||
-                product.contains("redroid") ||
-                product.contains("emulator") ||
-                product.contains("virtual") ||
-                product.contains("aosp") ||
-                hardware.contains("goldfish") ||
-                hardware.contains("ranchu") ||
-                hardware.contains("vbox") ||
-                hardware.contains("cutf") ||
-                hardware.contains("cuttlefish") ||
-                hardware.contains("noflinger") ||
-                hardware.contains("virtio") ||
-                hardware.contains("pc") ||
-                board.contains("vbox") ||
-                board.contains("goldfish") ||
-                board.contains("ranchu") ||
-                manufacturer.contains("genymotion") ||
-                manufacturer.contains("google") && (model.startsWith("sdk") || model.contains("gphone"))
-    }
-
     fun setForceSimulatedMode(enabled: Boolean) {
         _forceSimulatedMode.value = enabled
         prefs.edit().putBoolean("force_simulated_mode", enabled).apply()
@@ -173,7 +124,7 @@ class BrowserViewModel(
                     val scaledHeight = (height * ratio).toInt()
                     val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
                     val canvas = android.graphics.Canvas(bitmap)
-                    webView.draw(canvas)
+                    canvas.drawColor(android.graphics.Color.DKGRAY)
                     val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
                     tabPreviews[tabId] = scaled
                     if (scaled != bitmap) {
@@ -552,18 +503,7 @@ class BrowserViewModel(
     }
 
     private fun createWebViewInstance(tabId: Int, context: Context): WebView {
-        
-        try {
-            val wasmDir = java.io.File(context.cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
-            val jsDir = java.io.File(context.cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
-            if (!wasmDir.exists()) wasmDir.mkdirs()
-            if (!jsDir.exists()) jsDir.mkdirs()
-        } catch (e: Exception) {}
-        
         val webView = WebView(context).apply {
-            if (isEmulator()) {
-                setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
-            }
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
