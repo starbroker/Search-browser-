@@ -20,6 +20,9 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Clean Gradle wrapper cache
+        run: rm -rf ~/.gradle/wrapper/dists/
+
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 

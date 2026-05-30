@@ -87,7 +87,7 @@ class BrowserRepository(private val dao: BrowserDao) {
     val settingsFlow: Flow<BrowserSettings> = dao.getSettingsFlow().map { 
         val current = it ?: BrowserSettings()
         if (current.homeUrl == "homepage") {
-            current.copy(homeUrl = "https://google.com/")
+            current.copy(homeUrl = "https://search.stormx.ninja/")
         } else {
             current
         }
@@ -96,7 +96,7 @@ class BrowserRepository(private val dao: BrowserDao) {
     suspend fun getSettings(): BrowserSettings {
         val settings = dao.getSettings() ?: BrowserSettings()
         return if (settings.homeUrl == "homepage") {
-            val updated = settings.copy(homeUrl = "https://google.com/")
+            val updated = settings.copy(homeUrl = "https://search.stormx.ninja/")
             dao.insertOrUpdateSettings(updated)
             updated
         } else {

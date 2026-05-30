@@ -425,18 +425,18 @@ class BrowserViewModel(
                 addNewTab(initialSettings.homeUrl)
             } else {
                 _tabs.value = dbTabs.map { tab ->
-                    val finalUrl = if (tab.url == "homepage") "https://google.com/" else tab.url
+                    val finalUrl = if (tab.url == "homepage") "https://search.stormx.ninja/" else tab.url
                     TabState(id = tab.id, url = finalUrl, title = tab.title)
                 }
                 _activeTabId.value = dbTabs.first().id
                 val firstUrl = dbTabs.first().url
-                _currentUrlInput.value = if (firstUrl == "homepage") "https://google.com/" else firstUrl
+                _currentUrlInput.value = if (firstUrl == "homepage") "https://search.stormx.ninja/" else firstUrl
             }
         }
     }
 
     // Tab Management
-    fun addNewTab(url: String = "https://google.com/") {
+    fun addNewTab(url: String = "https://search.stormx.ninja/") {
         viewModelScope.launch {
             val title = "New Tab"
             val id = repository.addTab(url, title)
@@ -507,7 +507,8 @@ class BrowserViewModel(
                 for (webView in webViewMap.values) {
                     androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, isDark)
                 }
-            } else if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
+            } 
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
                 for (webView in webViewMap.values) {
                     androidx.webkit.WebSettingsCompat.setForceDark(
                         webView.settings,
@@ -521,22 +522,7 @@ class BrowserViewModel(
     fun getOrCreateWebView(tabId: Int, context: Context): WebView {
         return webViewMap[tabId] ?: createWebViewInstance(tabId, context).also {
             webViewMap[tabId] = it
-            val isSystemDark = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
-            val isDark = when(settings.value.themeMode) {
-                "DARK" -> true
-                "LIGHT" -> false
-                else -> isSystemDark
-            }
-            try {
-                if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
-                    androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(it.settings, isDark)
-                } else if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
-                    androidx.webkit.WebSettingsCompat.setForceDark(
-                        it.settings,
-                        if (isDark) androidx.webkit.WebSettingsCompat.FORCE_DARK_ON else androidx.webkit.WebSettingsCompat.FORCE_DARK_OFF
-                    )
-                }
-            } catch (e: Exception) {}
+            // applyWebSettings is already called inside createWebViewInstance
         }
     }
 
@@ -547,6 +533,22 @@ class BrowserViewModel(
         }
         val zoomScale = prefHelper.pageZoom
         webView.setInitialScale(zoomScale)
+        
+        applyDarkModeToWebView(webView)
+    }
+
+    private fun applyDarkModeToWebView(webView: WebView) {
+        val themeMode = settings.value.themeMode
+        val context = webView.context
+        val isDark = themeMode == "DARK" || (themeMode == "SYSTEM" && (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES)
+        
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
+            androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, isDark)
+        }
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
+            val forceDark = if (isDark) androidx.webkit.WebSettingsCompat.FORCE_DARK_ON else androidx.webkit.WebSettingsCompat.FORCE_DARK_OFF
+            androidx.webkit.WebSettingsCompat.setForceDark(webView.settings, forceDark)
+        }
     }
 
     private fun createWebViewInstance(tabId: Int, context: Context): WebView {
@@ -693,7 +695,7 @@ class BrowserViewModel(
                     webViewMap.remove(tabId)
                     _webViewUpdateTrigger.value += 1
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                        val currentUrl = _tabs.value.find { it.id == tabId }?.url ?: "https://google.com/"
+                        val currentUrl = _tabs.value.find { it.id == tabId }?.url ?: "https://search.stormx.ninja/"
                         val newView = getOrCreateWebView(tabId, context)
                         newView.loadUrl(currentUrl)
                         _webViewUpdateTrigger.value += 1
@@ -797,7 +799,7 @@ class BrowserViewModel(
         
         // Load initial url
         val currentTab = _tabs.value.find { it.id == tabId }
-        webView.loadUrl(currentTab?.url ?: "https://google.com/")
+        webView.loadUrl(currentTab?.url ?: "https://search.stormx.ninja/")
         return webView
     }
 
@@ -912,23 +914,36 @@ class BrowserViewModel(
         var formattedUrl = url.trim()
         if (formattedUrl.isEmpty()) return
 
+        val isSystemDark = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val isDark = when(settings.value.themeMode) {
+            "DARK" -> true
+            "LIGHT" -> false
+            else -> isSystemDark
+        }
+
+        if (formattedUrl == "https://search.stormx.ninja/" || formattedUrl == "https://search.stormx.ninja") {
+            formattedUrl = "https://search.stormx.ninja/?theme=${if (isDark) "dark" else "light"}"
+        }
+
         if (!URLUtil.isValidUrl(formattedUrl)) {
             // Search query default to storms search or google
             formattedUrl = if (formattedUrl.contains(".") && !formattedUrl.contains(" ")) {
                 "https://$formattedUrl"
             } else {
                 val engine = settings.value.searchEngine
+                val themeParamStr = if (isDark) "&theme=dark" else "&theme=light"
+
                 when (engine) {
                     "Google" -> "https://www.google.com/search?q=${Uri.encode(formattedUrl)}"
                     "Bing" -> "https://www.bing.com/search?q=${Uri.encode(formattedUrl)}"
                     "Yahoo" -> "https://search.yahoo.com/search?p=${Uri.encode(formattedUrl)}"
-                    "DuckDuckGo" -> "https://duckduckgo.com/?q=${Uri.encode(formattedUrl)}"
+                    "DuckDuckGo" -> "https://duckduckgo.com/?q=${Uri.encode(formattedUrl)}${if(isDark) "&kae=d" else "&kae=1"}"
                     "Baidu" -> "https://www.baidu.com/s?wd=${Uri.encode(formattedUrl)}"
                     else -> {
                         if (engine.startsWith("http")) {
                             "${engine}${Uri.encode(formattedUrl)}"
                         } else {
-                            "https://google.com/search?q=${Uri.encode(formattedUrl)}"
+                            "https://search.stormx.ninja/search?q=${Uri.encode(formattedUrl)}$themeParamStr"
                         }
                     }
                 }
@@ -1040,6 +1055,12 @@ class BrowserViewModel(
             val current = repository.getSettings()
             repository.saveSettings(current.copy(themeMode = mode))
             com.example.BrowserApplication.applyThemeMode(modeInt)
+            
+            // Reapply dark mode flag to all existing WebViews
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                webViewMap.values.forEach { applyWebSettings(it) }
+            }
+            
             activity?.recreate()
         }
     }
@@ -1084,9 +1105,9 @@ class BrowserViewModel(
                 "Yahoo" -> "https://www.yahoo.com/"
                 "DuckDuckGo" -> "https://duckduckgo.com/"
                 "Baidu" -> "https://www.baidu.com/"
-                "google.com" -> "https://google.com/"
+                "search.stormx.ninja" -> "https://search.stormx.ninja/"
                 else -> {
-                    if (engine.startsWith("http")) engine else "https://google.com/"
+                    if (engine.startsWith("http")) engine else "https://search.stormx.ninja/"
                 }
             }
             // Update the stateflow directly to prevent the race condition

@@ -38,10 +38,10 @@ object PreferenceHelper {
         set(value) = prefs.edit().putInt(KEY_PAGE_ZOOM, value).apply()
 
     var homePage: String
-        get() = prefs.getString(KEY_HOME_PAGE, "https://google.com/") ?: "https://google.com/"
+        get() = prefs.getString(KEY_HOME_PAGE, "https://search.stormx.ninja/") ?: "https://search.stormx.ninja/"
         set(value) = prefs.edit().putString(KEY_HOME_PAGE, value).apply()
 
     var searchEngine: String
-        get() = prefs.getString(KEY_SEARCH_ENGINE, "Google") ?: "Google"
+        get() = prefs.getString(KEY_SEARCH_ENGINE, "search.stormx.ninja") ?: "search.stormx.ninja"
         set(value) = prefs.edit().putString(KEY_SEARCH_ENGINE, value).apply()
 }

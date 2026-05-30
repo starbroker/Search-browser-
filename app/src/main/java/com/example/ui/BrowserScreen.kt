@@ -3101,7 +3101,7 @@ fun SettingsSheet(
                                         fontSize = 16.sp,
                                         color = if (isDark) Color.White else Color(0xFF1C1C1E)
                                     )
-                                    val displayEngine = if (settings.searchEngine == "google.com") "Search Browser" else settings.searchEngine
+                                    val displayEngine = if (settings.searchEngine == "search.stormx.ninja") "Search Browser" else settings.searchEngine
                                     Text(
                                         text = "Active: $displayEngine",
                                         fontFamily = activeFont,
@@ -5359,7 +5359,7 @@ fun DownloadsPage(
                 Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Forward", tint = textMain, modifier = Modifier.size(26.dp))
             }
             IconButton(onClick = { 
-                viewModel.navigateActiveTab("https://google.com/", context)
+                viewModel.navigateActiveTab("https://search.stormx.ninja/", context)
                 onDismiss() 
             }) {
                 Icon(Icons.Default.Home, contentDescription = "Home", tint = textMain, modifier = Modifier.size(26.dp))
@@ -5551,10 +5551,10 @@ fun isHomepageUrl(url: String?, settings: BrowserSettings? = null): Boolean {
     return trimmed.isEmpty() ||
            trimmed == "homepage" ||
            trimmed == "about:blank" ||
-           trimmed == "https://google.com" ||
-           trimmed == "https://google.com/" ||
-           trimmed == "http://google.com" ||
-           trimmed == "http://google.com/"
+           trimmed == "https://search.stormx.ninja" ||
+           trimmed == "https://search.stormx.ninja/" ||
+           trimmed == "http://search.stormx.ninja" ||
+           trimmed == "http://search.stormx.ninja/"
 }
 
 @Composable
@@ -6377,7 +6377,7 @@ fun FallbackBrowserSimulator(
                             Spacer(modifier = Modifier.height(20.dp))
 
                             Button(
-                                onClick = { onNavigate("https://google.com/") },
+                                onClick = { onNavigate("https://search.stormx.ninja/") },
                                 modifier = Modifier.align(Alignment.End),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary
@@ -6512,7 +6512,7 @@ fun ColumnScope.SearchEngineSubPage(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 val engines = listOf(
-                    "Search Browser" to "google.com",
+                    "Search Browser" to "search.stormx.ninja",
                     "Google" to "Google",
                     "Bing" to "Bing",
                     "Yahoo" to "Yahoo",

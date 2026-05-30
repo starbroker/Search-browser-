@@ -58,6 +58,7 @@ fun OnboardingScreen(
     ) {
         AnimatedContent(
             targetState = currentPage,
+            modifier = Modifier.fillMaxSize(),
             transitionSpec = {
                 if (targetState > initialState) {
                     (slideInHorizontally(animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 300f)) { width -> width } + fadeIn(animationSpec = tween(400))) togetherWith
@@ -207,7 +208,7 @@ fun LanguageSelectionPage(viewModel: BrowserViewModel, isDark: Boolean, onNext: 
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f, fill = false)
+                .weight(1f)
         ) {
             items(filteredLanguages) { lang ->
                 val isSelected = selectedLang == lang
@@ -254,7 +255,7 @@ fun SearchEngineSelectionPage(viewModel: BrowserViewModel, isDark: Boolean, onFi
     val cardBg = glassCardColor(isDark)
     val settings by viewModel.settings.collectAsState()
     val availableEngines = listOf(
-        "Search Browser" to "google.com",
+        "Search Browser" to "search.stormx.ninja",
         "Google" to "Google",
         "Bing" to "Bing",
         "Yahoo" to "Yahoo",
@@ -278,7 +279,7 @@ fun SearchEngineSelectionPage(viewModel: BrowserViewModel, isDark: Boolean, onFi
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f, fill = false)
+                .weight(1f)
         ) {
             items(availableEngines) { enginePair ->
                 val engineLabel = enginePair.first
