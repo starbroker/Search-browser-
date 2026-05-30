@@ -1,2 +1,0 @@
-gradle.ext.scan = true
-gradle.ext.scanAccept = true
