@@ -1,30 +1,20 @@
-# Gradle files
-.gradle/
-build/
-*.apk
-*.ap_
-*.dex
-*.class
-*.jar
-*.aar
-
-# Local configuration file
-local.properties
-
-# IDE
-.idea/
-.vscode/
 *.iml
-*.iws
-*.ipr
-*.swp
-*.swo
-*~
+.gradle
+.kotlin
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
 .DS_Store
-
-# Build outputs
-app/build/
-.build-outputs/
-
-# Gradle wrapper cache - exclude jar to prevent corruption
-gradle/wrapper/gradle-wrapper.jar
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.env
+debug.keystore
+my-upload-key.jks
+build-artifacts/
