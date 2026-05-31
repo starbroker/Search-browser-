@@ -1,4 +1,4 @@
-name: Release
+name: Build and Release
 
 on:
   push:
@@ -11,6 +11,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Repository
@@ -26,51 +29,54 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Decode Keystore
-        env:
-          ENCODED_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          echo $ENCODED_KEYSTORE | base64 -d > my-upload-key.jks
-
-      - name: Build Release APK
-        env:
-          KEYSTORE_PATH: my-upload-key.jks
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Rename APK
         run: |
           VERSION_NAME=${GITHUB_REF#refs/tags/v}
           if [ "$VERSION_NAME" = "${GITHUB_REF}" ]; then
-            mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/BrowserApp-release.apk
+            mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/BrowserApp-debug.apk
           else
-            mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/BrowserApp-v${VERSION_NAME}-release.apk
+            mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/BrowserApp-v${VERSION_NAME}-debug.apk
           fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: app/build/outputs/apk/release/*.apk
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
 
       - name: Generate SHA-256
         id: shasum
         run: |
           VERSION_NAME=${GITHUB_REF#refs/tags/v}
           if [ "$VERSION_NAME" = "${GITHUB_REF}" ]; then
-            SHA256=$(sha256sum app/build/outputs/apk/release/BrowserApp-release.apk | awk '{ print $1 }')
+            SHA256=$(sha256sum app/build/outputs/apk/debug/BrowserApp-debug.apk | awk '{ print $1 }')
           else
-            SHA256=$(sha256sum app/build/outputs/apk/release/BrowserApp-v${VERSION_NAME}-release.apk | awk '{ print $1 }')
+            SHA256=$(sha256sum app/build/outputs/apk/debug/BrowserApp-v${VERSION_NAME}-debug.apk | awk '{ print $1 }')
           fi
           echo "SHA256: $SHA256" > release-notes.txt
           echo "Added new features and bug fixes." >> release-notes.txt
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (Tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/BrowserApp-v*-release.apk
+          files: app/build/outputs/apk/debug/BrowserApp-v*-debug.apk
+          body_path: release-notes.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release (Latest on Main)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Release
+          files: app/build/outputs/apk/debug/BrowserApp-debug.apk
           body_path: release-notes.txt
           draft: false
           prerelease: false
