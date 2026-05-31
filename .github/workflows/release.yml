@@ -2,8 +2,11 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -39,17 +42,32 @@ jobs:
       - name: Rename APK
         run: |
           VERSION_NAME=${GITHUB_REF#refs/tags/v}
-          mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/BrowserApp-v${VERSION_NAME}-release.apk
+          if [ "$VERSION_NAME" = "${GITHUB_REF}" ]; then
+            mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/BrowserApp-release.apk
+          else
+            mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/BrowserApp-v${VERSION_NAME}-release.apk
+          fi
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app/build/outputs/apk/release/*.apk
 
       - name: Generate SHA-256
         id: shasum
         run: |
           VERSION_NAME=${GITHUB_REF#refs/tags/v}
-          SHA256=$(sha256sum app/build/outputs/apk/release/BrowserApp-v${VERSION_NAME}-release.apk | awk '{ print $1 }')
+          if [ "$VERSION_NAME" = "${GITHUB_REF}" ]; then
+            SHA256=$(sha256sum app/build/outputs/apk/release/BrowserApp-release.apk | awk '{ print $1 }')
+          else
+            SHA256=$(sha256sum app/build/outputs/apk/release/BrowserApp-v${VERSION_NAME}-release.apk | awk '{ print $1 }')
+          fi
           echo "SHA256: $SHA256" > release-notes.txt
           echo "Added new features and bug fixes." >> release-notes.txt
 
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: app/build/outputs/apk/release/BrowserApp-v*-release.apk

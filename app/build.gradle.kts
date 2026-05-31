@@ -117,7 +117,7 @@ dependencies {
   // implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
-  implementation(libs.haze)
+
   
   // Security
   implementation("androidx.security:security-crypto-ktx:1.1.0-alpha06")
