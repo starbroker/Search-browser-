@@ -134,6 +134,7 @@ class MainActivity : AppCompatActivity() {
                                                     androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("All popups now feature a blurry glassy aesthetic", settings.language))
                                                     androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Proper closing animation for welcome screen UI", settings.language))
                                                     androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Bug fixes and performance improvements", settings.language))
+                                                    androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Fixed blur crashes and missing icon issues", settings.language))
                                                 }
                                             },
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp),
