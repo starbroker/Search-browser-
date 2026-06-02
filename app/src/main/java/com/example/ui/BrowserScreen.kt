@@ -5595,10 +5595,10 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
         brush = Brush.radialGradient(
             colors = listOf(topRightColor, Color.Transparent),
             center = topRightCenter,
-            radius = size.width * 0.85f
+            radius = (size.width * 0.85f).coerceAtLeast(1f)
         ),
         center = topRightCenter,
-        radius = size.width * 0.85f,
+        radius = (size.width * 0.85f).coerceAtLeast(1f),
         alpha = alpha
     )
 
@@ -5609,10 +5609,10 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
         brush = Brush.radialGradient(
             colors = listOf(bottomLeftColor, Color.Transparent),
             center = bottomLeftCenter,
-            radius = size.width * 0.85f
+            radius = (size.width * 0.85f).coerceAtLeast(1f)
         ),
         center = bottomLeftCenter,
-        radius = size.width * 0.85f,
+        radius = (size.width * 0.85f).coerceAtLeast(1f),
         alpha = alpha
     )
     
@@ -5624,10 +5624,10 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
             brush = Brush.radialGradient(
                 colors = listOf(centerRightColor, Color.Transparent),
                 center = centerRightOffset,
-                radius = size.width * 0.7f
+                radius = (size.width * 0.7f).coerceAtLeast(1f)
             ),
             center = centerRightOffset,
-            radius = size.width * 0.7f,
+            radius = (size.width * 0.7f).coerceAtLeast(1f),
             alpha = alpha
         )
     } else {
@@ -5637,10 +5637,10 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
             brush = Brush.radialGradient(
                 colors = listOf(centerRightColor, Color.Transparent),
                 center = centerRightOffset,
-                radius = size.width * 0.7f
+                radius = (size.width * 0.7f).coerceAtLeast(1f)
             ),
             center = centerRightOffset,
-            radius = size.width * 0.7f,
+            radius = (size.width * 0.7f).coerceAtLeast(1f),
             alpha = alpha
         )
     }
