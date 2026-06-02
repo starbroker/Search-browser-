@@ -201,10 +201,72 @@ class BrowserViewModel(
             java.io.File(baseCache, "js").mkdirs()
             java.io.File(baseCache, "wasm").mkdirs()
         } catch (e: Exception) {}
+        
+        checkForAppUpdates()
     }
 
     data class ImageDownloadProposal(val url: String)
     val imageDownloadProposal = MutableStateFlow<ImageDownloadProposal?>(null)
+    
+    data class AppUpdateProposal(
+        val latestVersion: String,
+        val releaseNotes: String,
+        val downloadUrl: String
+    )
+    val appUpdateProposal = MutableStateFlow<AppUpdateProposal?>(null)
+
+    fun checkForAppUpdates() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val url = java.net.URL("https://api.github.com/repos/HimankC/StormX/releases/latest")
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+
+                if (connection.responseCode == 200) {
+                    val stream = connection.inputStream
+                    val response = stream.bufferedReader().use { it.readText() }
+                    val json = org.json.JSONObject(response)
+                    val tagName = json.optString("tag_name", "")
+                    val releaseNotes = json.optString("body", "No release notes provided.")
+                    
+                    val assets = json.optJSONArray("assets")
+                    var downloadUrl = ""
+                    if (assets != null && assets.length() > 0) {
+                        for (i in 0 until assets.length()) {
+                            val asset = assets.getJSONObject(i)
+                            if (asset.optString("name", "").endsWith(".apk")) {
+                                downloadUrl = asset.optString("browser_download_url", "")
+                                break
+                            }
+                        }
+                        if (downloadUrl.isEmpty()) {
+                            downloadUrl = assets.getJSONObject(0).optString("browser_download_url", "")
+                        }
+                    } else {
+                        downloadUrl = json.optString("html_url", "")
+                    }
+
+                    val currentVersion = com.example.BuildConfig.VERSION_NAME
+                    val tagClean = tagName.removePrefix("v").trim()
+                    val currentClean = currentVersion.removePrefix("v").trim()
+
+                    if (tagClean.isNotEmpty() && tagClean != currentClean) {
+                        withContext(Dispatchers.Main) {
+                            appUpdateProposal.value = AppUpdateProposal(
+                                latestVersion = tagName,
+                                releaseNotes = releaseNotes,
+                                downloadUrl = downloadUrl
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
     
     data class PermissionProposal(
         val domain: String,

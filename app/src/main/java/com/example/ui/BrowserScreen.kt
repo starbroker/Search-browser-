@@ -195,6 +195,8 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val showMenuDrawer by viewModel.showMenuDrawer.collectAsState()
     val imageDownloadProposal by viewModel.imageDownloadProposal.collectAsState()
     val permissionProposal by viewModel.permissionRequestProposal.collectAsState()
+    val appRedirectProposal by viewModel.appRedirectProposal.collectAsState()
+    val appUpdateProposal by viewModel.appUpdateProposal.collectAsState()
     
     val multiplePermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
@@ -248,7 +250,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
         }
     }
 
-    val isAnyDrawerOpen = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showShield || showMenuDrawer
+    val isAnyDrawerOpen = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showShield || showMenuDrawer || appRedirectProposal != null || permissionProposal != null || appUpdateProposal != null || imageDownloadProposal != null
 
     var isSearchFocused by remember { mutableStateOf(false) }
 
@@ -862,9 +864,9 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             }
 
             // High-fidelity social redirects handler dialogue
-            val appRedirectProposal by viewModel.appRedirectProposal.collectAsState()
             appRedirectProposal?.let { proposal ->
                 AlertDialog(
+                    modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(26.dp)),
                     onDismissRequest = {
                         viewModel.proceedWithBrowser(proposal.url, proposal.tabId)
                     },
@@ -937,6 +939,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 val involvesLocation = proposal.geoCallback != null
 
                 AlertDialog(
+                    modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(26.dp)),
                     onDismissRequest = { 
                         viewModel.handlePermissionProposal(false, true)
                     },
@@ -1011,6 +1014,51 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     tonalElevation = 10.dp
                 )
             }
+
+            appUpdateProposal?.let { update ->
+                AlertDialog(
+                    modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(26.dp)),
+                    onDismissRequest = { viewModel.appUpdateProposal.value = null },
+                    title = {
+                        Text(
+                            text = "Update Available: " + update.latestVersion,
+                            fontFamily = activeFont,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Column {
+                            Text(
+                                text = "A new version of this app is available.\n\nRelease Notes:\n" + update.releaseNotes,
+                                fontFamily = activeFont,
+                                maxLines = 10,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.appUpdateProposal.value = null
+                                val defaultUrl = "https://github.com/HimankC/StormX/releases/latest"
+                                val url = if (update.downloadUrl.isNotEmpty()) update.downloadUrl else defaultUrl
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                context.startActivity(intent)
+                            },
+                        ) {
+                            Text(text = "Download Update", fontFamily = activeFont)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.appUpdateProposal.value = null }) {
+                            Text(text = "Later", fontFamily = activeFont)
+                        }
+                    },
+                    containerColor = glassCardColor(isDark),
+                    tonalElevation = 10.dp
+                )
+            }
+
         }
     }
 }
@@ -4550,6 +4598,7 @@ fun HistoryPage(
     
     if (showClearConfirmDialog) {
         AlertDialog(
+            modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(26.dp)),
             onDismissRequest = { showClearConfirmDialog = false },
             title = { Text(com.example.ui.BrowserTranslator.translateText("Clear All History", settings.language), fontFamily = activeFont, fontWeight = FontWeight.Bold) },
             text = { Text("Are you sure you want to permanently delete all browsing logs?", fontFamily = activeFont) },
@@ -4582,7 +4631,8 @@ fun HistoryPage(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (showClearConfirmDialog) 32.dp else 0.dp)
+        Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -4934,6 +4984,7 @@ fun DownloadsPage(
 
     if (itemToDelete != null) {
         AlertDialog(
+            modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(26.dp)),
             onDismissRequest = { itemToDelete = null },
             title = { Text(com.example.ui.BrowserTranslator.translateText("Delete Download", settings.language), fontFamily = activeFont, fontWeight = FontWeight.Bold) },
             text = {
@@ -4995,7 +5046,8 @@ fun DownloadsPage(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (itemToDelete != null) 32.dp else 0.dp)
+        Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
             // Content
             Column(
             modifier = Modifier
