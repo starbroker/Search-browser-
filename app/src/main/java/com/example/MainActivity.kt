@@ -116,8 +116,7 @@ class MainActivity : AppCompatActivity() {
                                 val glassBorder = if (isDarkContext) androidx.compose.ui.graphics.Color(0x4DFFFFFF) else androidx.compose.ui.graphics.Color(0x80FFFFFF)
                                 
                                 androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-                                    val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (showChangelog) 32.dp else 0.dp)
-                                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)) {
+                                                                        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
                                         BrowserScreen(viewModel = browserViewModel)
                                     }
                                     

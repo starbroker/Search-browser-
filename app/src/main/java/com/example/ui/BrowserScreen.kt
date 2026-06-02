@@ -360,12 +360,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 // Determine layout direction for navigation bar
                 val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
-                val blurRadius by androidx.compose.animation.core.animateDpAsState(
-                    targetValue = if (isAnyDrawerOpen) 32.dp else 0.dp,
-                    animationSpec = androidx.compose.animation.core.tween(300),
-                    label = "baseBlur"
-                )
-                Box(modifier = Modifier.fillMaxSize().then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)) {
+                                Box(modifier = Modifier.fillMaxSize()) {
                     if (isTablet) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         AnimatedVisibility(
@@ -4631,8 +4626,7 @@ fun HistoryPage(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-        val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (showClearConfirmDialog) 32.dp else 0.dp)
-        Box(modifier = Modifier.fillMaxSize().then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)) {
+                Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -5046,8 +5040,7 @@ fun DownloadsPage(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-        val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (itemToDelete != null) 32.dp else 0.dp)
-        Box(modifier = Modifier.fillMaxSize().then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)) {
+                Box(modifier = Modifier.fillMaxSize()) {
             // Content
             Column(
             modifier = Modifier
