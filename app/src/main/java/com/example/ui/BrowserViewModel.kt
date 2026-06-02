@@ -210,6 +210,7 @@ class BrowserViewModel(
         val domain: String,
         val request: android.webkit.PermissionRequest? = null,
         val resourcesNeeded: List<String> = emptyList(),
+        val autoGranted: List<String> = emptyList(),
         val geoCallback: android.webkit.GeolocationPermissions.Callback? = null,
         val geoOrigin: String? = null
     )
@@ -261,7 +262,7 @@ class BrowserViewModel(
                 microphoneAllowed = perms.find { it.permissionType == "microphone" }?.isGranted
             )
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private fun saveSitePermissionProxy(domain: String, type: String, allowed: Boolean) {
         viewModelScope.launch {
@@ -523,6 +524,7 @@ class BrowserViewModel(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
             )
             settings.apply {
+                setGeolocationEnabled(true)
                 javaScriptEnabled = true
                 domStorageEnabled = true
                 databaseEnabled = true
@@ -767,7 +769,7 @@ class BrowserViewModel(
                         }
                     }
                     if (resourcesNeeded.isNotEmpty()) {
-                        permissionRequestProposal.value = PermissionProposal(domain, request, resourcesNeeded)
+                        permissionRequestProposal.value = PermissionProposal(domain, request, resourcesNeeded, autoGrantedResources)
                     } else if (autoGrantedResources.isNotEmpty()) {
                         request.grant(autoGrantedResources.toTypedArray())
                     } else {
@@ -839,7 +841,7 @@ class BrowserViewModel(
         val proposal = permissionRequestProposal.value ?: return
         if (grant) {
             try {
-                proposal.request?.grant(proposal.resourcesNeeded.toTypedArray())
+                proposal.request?.grant((proposal.resourcesNeeded + proposal.autoGranted).toTypedArray())
             } catch (e: Exception) {}
             try {
                 proposal.geoCallback?.invoke(proposal.geoOrigin, true, remember) // geoCallback takes remember boolean directly

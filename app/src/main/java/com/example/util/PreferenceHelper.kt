@@ -13,6 +13,7 @@ object PreferenceHelper {
     private const val KEY_HOME_PAGE = "homePage"
     private const val KEY_SEARCH_ENGINE = "searchEngine"
     private const val KEY_ONBOARDING_COMPLETE = "onboardingComplete"
+    private const val KEY_LAST_VERSION_CODE = "lastVersionCode"
 
     private lateinit var prefs: SharedPreferences
 
@@ -49,4 +50,8 @@ object PreferenceHelper {
     var isOnboardingComplete: Boolean
         get() = prefs.getBoolean(KEY_ONBOARDING_COMPLETE, false)
         set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_COMPLETE, value).apply()
+
+    var lastVersionCode: Int
+        get() = prefs.getInt(KEY_LAST_VERSION_CODE, 0)
+        set(value) { prefs.edit().putInt(KEY_LAST_VERSION_CODE, value).commit() }
 }

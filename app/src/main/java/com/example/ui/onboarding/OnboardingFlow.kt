@@ -97,8 +97,7 @@ fun OnboardingFlow(
                                 contentColor = if (isDark) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.primary
                             )
                         ) {
-                            Text(
-                                "Skip",
+                            Text(com.example.ui.BrowserTranslator.translateText("Skip", settings.language),
                                 fontFamily = activeFont,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 16.sp
@@ -272,7 +271,7 @@ fun WelcomeScreen(activeFont: FontFamily, isDark: Boolean) {
             contentAlignment = Alignment.Center
         ) {
             androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.custom_launcher_fg),
+                painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.app_icon_custom),
                 contentDescription = "App Icon",
                 modifier = Modifier
                     .size(80.dp)
@@ -328,6 +327,14 @@ fun WelcomeScreen(activeFont: FontFamily, isDark: Boolean) {
             color = if (isDark) Color.White.copy(alpha = 0.6f) else Color(0xFF1C1C1E).copy(alpha = 0.6f),
             lineHeight = 24.sp
         )
+        Spacer(modifier = Modifier.height(48.dp))
+        Text(
+            text = "Developed by Himank.J",
+            fontFamily = activeFont,
+            style = MaterialTheme.typography.labelMedium,
+            textAlign = TextAlign.Center,
+            color = if (isDark) Color.White.copy(alpha = 0.4f) else Color(0xFF1C1C1E).copy(alpha = 0.4f)
+        )
     }
 }
 
@@ -354,16 +361,14 @@ fun LanguageScreen(
     ) {
         Spacer(modifier = Modifier.height(8.dp))
         Column {
-            Text(
-                "Languages",
+            Text(com.example.ui.BrowserTranslator.translateText("Languages", settings.language),
                 fontFamily = activeFont,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.ExtraBold,
                 color = if (isDark) Color.White else Color(0xFF1C1C1E)
             )
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "Select your preferred language for searches and interface.",
+            Text(com.example.ui.BrowserTranslator.translateText("Select your preferred language for searches and interface.", settings.language),
                 fontFamily = activeFont,
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (isDark) Color.White.copy(alpha = 0.6f) else Color(0xFF1C1C1E).copy(alpha = 0.6f)
@@ -402,8 +407,7 @@ fun LanguageScreen(
                     singleLine = true,
                     decorationBox = { innerTextField ->
                         if (searchQuery.isEmpty()) {
-                            Text(
-                                "Search languages...",
+                            Text(com.example.ui.BrowserTranslator.translateText("Search languages...", settings.language),
                                 color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.4f),
                                 fontFamily = activeFont,
                                 fontSize = 16.sp
@@ -494,16 +498,14 @@ fun SearchEngineScreen(
     ) {
         Spacer(modifier = Modifier.height(8.dp))
         Column {
-            Text(
-                "Search Engine",
+            Text(com.example.ui.BrowserTranslator.translateText("Search Engine", settings.language),
                 fontFamily = activeFont,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.ExtraBold,
                 color = if (isDark) Color.White else Color(0xFF1C1C1E)
             )
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "Choose the default service used when typing queries in the address bar.",
+            Text(com.example.ui.BrowserTranslator.translateText("Choose the default service used when typing queries in the address bar.", settings.language),
                 fontFamily = activeFont,
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (isDark) Color.White.copy(alpha = 0.6f) else Color(0xFF1C1C1E).copy(alpha = 0.6f)

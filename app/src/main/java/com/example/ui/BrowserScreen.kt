@@ -199,13 +199,55 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val multiplePermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val allGranted = permissions.values.all { it }
+        val locationRequested = permissions.containsKey(android.Manifest.permission.ACCESS_FINE_LOCATION) || permissions.containsKey(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+        val locationGranted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true || permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        val cameraGranted = permissions[android.Manifest.permission.CAMERA] ?: true
+        val micGranted = permissions[android.Manifest.permission.RECORD_AUDIO] ?: true
+        val allGranted = (if (locationRequested) locationGranted else true) && cameraGranted && micGranted
         viewModel.handlePermissionProposal(allGranted, true)
         if (!allGranted) {
-            android.widget.Toast.makeText(context, "OS Permissions Denied", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, com.example.ui.BrowserTranslator.translateText(com.example.ui.BrowserTranslator.translateText("OS Permissions Denied", settings.language), settings.language), android.widget.Toast.LENGTH_SHORT).show()
         }
     }
     
+    var shieldSiteDomain by remember { mutableStateOf<String?>(null) }
+    val shieldLocationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val isGranted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true || permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (shieldSiteDomain != null) {
+            if (isGranted) viewModel.toggleWebsiteLocation(shieldSiteDomain!!, true)
+            else {
+                android.widget.Toast.makeText(context, com.example.ui.BrowserTranslator.translateText(com.example.ui.BrowserTranslator.translateText("Location Permission Denied", settings.language), settings.language), android.widget.Toast.LENGTH_SHORT).show()
+                viewModel.toggleWebsiteLocation(shieldSiteDomain!!, false)
+            }
+        }
+    }
+
+    val shieldCameraPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (shieldSiteDomain != null) {
+            if (isGranted) viewModel.toggleWebsiteCamera(shieldSiteDomain!!, true)
+            else {
+                android.widget.Toast.makeText(context, com.example.ui.BrowserTranslator.translateText(com.example.ui.BrowserTranslator.translateText("Camera Permission Denied", settings.language), settings.language), android.widget.Toast.LENGTH_SHORT).show()
+                viewModel.toggleWebsiteCamera(shieldSiteDomain!!, false)
+            }
+        }
+    }
+
+    val shieldMicPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (shieldSiteDomain != null) {
+            if (isGranted) viewModel.toggleWebsiteMicrophone(shieldSiteDomain!!, true)
+            else {
+                android.widget.Toast.makeText(context, com.example.ui.BrowserTranslator.translateText(com.example.ui.BrowserTranslator.translateText("Microphone Permission Denied", settings.language), settings.language), android.widget.Toast.LENGTH_SHORT).show()
+                viewModel.toggleWebsiteMicrophone(shieldSiteDomain!!, false)
+            }
+        }
+    }
+
     val isAnyDrawerOpen = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showShield || showMenuDrawer
 
     var isSearchFocused by remember { mutableStateOf(false) }
@@ -657,7 +699,19 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     settings = settings,
                     activeFont = activeFont,
                     sessionAds = adsBlockedSession,
-                    sessionTrackers = trackersBlockedSession
+                    sessionTrackers = trackersBlockedSession,
+                    onLocationLaunch = { domain ->
+                        shieldSiteDomain = domain
+                        shieldLocationPermissionLauncher.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION))
+                    },
+                    onCameraLaunch = { domain ->
+                        shieldSiteDomain = domain
+                        shieldCameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                    },
+                    onMicLaunch = { domain ->
+                        shieldSiteDomain = domain
+                        shieldMicPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
                 )
             }
 
@@ -834,7 +888,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             ),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Open App", fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                            Text(com.example.ui.BrowserTranslator.translateText("Open App", settings.language), fontFamily = activeFont, fontWeight = FontWeight.Bold)
                         }
                     },
                     dismissButton = {
@@ -843,7 +897,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 viewModel.proceedWithBrowser(proposal.url, proposal.tabId)
                             }
                         ) {
-                            Text("Stay in Browser", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(com.example.ui.BrowserTranslator.translateText("Stay in Browser", settings.language), fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     },
                     icon = {
@@ -871,9 +925,9 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
-                    shape = RoundedCornerShape(24.dp),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 6.dp
+                    shape = RoundedCornerShape(26.dp),
+                    containerColor = glassCardColor(isDark),
+                    tonalElevation = 10.dp
                 )
             }
 
@@ -892,7 +946,10 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 val permissionsToRequest = mutableListOf<String>()
                                 if (involvesCamera) permissionsToRequest.add(android.Manifest.permission.CAMERA)
                                 if (involvesMic) permissionsToRequest.add(android.Manifest.permission.RECORD_AUDIO)
-                                if (involvesLocation) permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                                if (involvesLocation) {
+                                    permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                                    permissionsToRequest.add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                                }
                                 
                                 if (permissionsToRequest.isNotEmpty()) {
                                     multiplePermissionLauncher.launch(permissionsToRequest.toTypedArray())
@@ -906,14 +963,14 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             ),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Allow", fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                            Text(com.example.ui.BrowserTranslator.translateText("Allow", settings.language), fontFamily = activeFont, fontWeight = FontWeight.Bold)
                         }
                     },
                     dismissButton = {
                         TextButton(onClick = { 
                             viewModel.handlePermissionProposal(false, true)
                         }) {
-                            Text("Deny", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(com.example.ui.BrowserTranslator.translateText("Deny", settings.language), fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     },
                     icon = {
@@ -949,9 +1006,9 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             )
                         }
                     },
-                    shape = RoundedCornerShape(24.dp),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 6.dp
+                    shape = RoundedCornerShape(26.dp),
+                    containerColor = glassCardColor(isDark),
+                    tonalElevation = 10.dp
                 )
             }
         }
@@ -1620,7 +1677,10 @@ fun ShieldDashboardSheet(
     settings: BrowserSettings,
     activeFont: FontFamily,
     sessionAds: Int,
-    sessionTrackers: Int
+    sessionTrackers: Int,
+    onLocationLaunch: (String) -> Unit,
+    onCameraLaunch: (String) -> Unit,
+    onMicLaunch: (String) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val listTabs by viewModel.tabs.collectAsState()
@@ -1641,36 +1701,6 @@ fun ShieldDashboardSheet(
             "this website"
         }
     } ?: "this website"
-
-    val locationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) viewModel.toggleWebsiteLocation(currentDomain, true)
-        else {
-            android.widget.Toast.makeText(context, "Location Permission Denied", android.widget.Toast.LENGTH_SHORT).show()
-            viewModel.toggleWebsiteLocation(currentDomain, false)
-        }
-    }
-
-    val cameraPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) viewModel.toggleWebsiteCamera(currentDomain, true)
-        else {
-            android.widget.Toast.makeText(context, "Camera Permission Denied", android.widget.Toast.LENGTH_SHORT).show()
-            viewModel.toggleWebsiteCamera(currentDomain, false)
-        }
-    }
-
-    val micPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) viewModel.toggleWebsiteMicrophone(currentDomain, true)
-        else {
-            android.widget.Toast.makeText(context, "Microphone Permission Denied", android.widget.Toast.LENGTH_SHORT).show()
-            viewModel.toggleWebsiteMicrophone(currentDomain, false)
-        }
-    }
     
     val notificationsAllowed = permissionsList.any { it.domain == currentDomain && it.notificationsAllowed == true }
 
@@ -1873,7 +1903,7 @@ fun ShieldDashboardSheet(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Ad-Blocking Protection", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("Stop intrusive ads and malicious popups", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        Text(com.example.ui.BrowserTranslator.translateText("Stop intrusive ads and malicious popups", settings.language), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                     }
                     Switch(
                         checked = settings.adBlockEnabled,
@@ -1915,7 +1945,7 @@ fun ShieldDashboardSheet(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Anti-Tracker Shield", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("Prevent tracking pixels from recording cookies", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        Text(com.example.ui.BrowserTranslator.translateText("Prevent tracking pixels from recording cookies", settings.language), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                     }
                     Switch(
                         checked = settings.trackerBlockEnabled,
@@ -1969,7 +1999,7 @@ fun ShieldDashboardSheet(
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Allow Website Notifications", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(com.example.ui.BrowserTranslator.translateText("Allow Website Notifications", settings.language), fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
                             text = if (activePerm.notificationsAllowed == true) "Allowed for $currentDomain" else "Receive instant updates from $currentDomain",
                             fontSize = 11.sp,
@@ -1994,7 +2024,7 @@ fun ShieldDashboardSheet(
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
                         .clickable { 
-                            if (activePerm.locationAllowed != true) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            if (activePerm.locationAllowed != true) onLocationLaunch(currentDomain)
                             else viewModel.toggleWebsiteLocation(currentDomain, false)
                         }
                         .padding(16.dp),
@@ -2018,7 +2048,7 @@ fun ShieldDashboardSheet(
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Allow Location Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(com.example.ui.BrowserTranslator.translateText("Allow Location Access", settings.language), fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
                             text = if (activePerm.locationAllowed == true) "Location permission active" else "Allow site to ask for location",
                             fontSize = 11.sp,
@@ -2028,7 +2058,7 @@ fun ShieldDashboardSheet(
                     Switch(
                         checked = activePerm.locationAllowed == true,
                         onCheckedChange = { 
-                            if (activePerm.locationAllowed != true) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            if (activePerm.locationAllowed != true) onLocationLaunch(currentDomain)
                             else viewModel.toggleWebsiteLocation(currentDomain, false)
                         },
                         colors = SwitchDefaults.colors(
@@ -2046,7 +2076,7 @@ fun ShieldDashboardSheet(
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
                         .clickable { 
-                            if (activePerm.cameraAllowed != true) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            if (activePerm.cameraAllowed != true) onCameraLaunch(currentDomain)
                             else viewModel.toggleWebsiteCamera(currentDomain, false)
                         }
                         .padding(16.dp),
@@ -2070,7 +2100,7 @@ fun ShieldDashboardSheet(
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Allow Camera Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(com.example.ui.BrowserTranslator.translateText("Allow Camera Access", settings.language), fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
                             text = if (activePerm.cameraAllowed == true) "Camera permission active" else "Allow site to ask for camera",
                             fontSize = 11.sp,
@@ -2080,7 +2110,7 @@ fun ShieldDashboardSheet(
                     Switch(
                         checked = activePerm.cameraAllowed == true,
                         onCheckedChange = { 
-                            if (activePerm.cameraAllowed != true) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            if (activePerm.cameraAllowed != true) onCameraLaunch(currentDomain)
                             else viewModel.toggleWebsiteCamera(currentDomain, false)
                         },
                         colors = SwitchDefaults.colors(
@@ -2098,7 +2128,7 @@ fun ShieldDashboardSheet(
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
                         .clickable { 
-                            if (activePerm.microphoneAllowed != true) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            if (activePerm.microphoneAllowed != true) onMicLaunch(currentDomain)
                             else viewModel.toggleWebsiteMicrophone(currentDomain, false)
                         }
                         .padding(16.dp),
@@ -2122,7 +2152,7 @@ fun ShieldDashboardSheet(
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Allow Microphone Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(com.example.ui.BrowserTranslator.translateText("Allow Microphone Access", settings.language), fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
                             text = if (activePerm.microphoneAllowed == true) "Microphone permission active" else "Allow site to ask for microphone",
                             fontSize = 11.sp,
@@ -2132,7 +2162,7 @@ fun ShieldDashboardSheet(
                     Switch(
                         checked = activePerm.microphoneAllowed == true,
                         onCheckedChange = { 
-                            if (activePerm.microphoneAllowed != true) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            if (activePerm.microphoneAllowed != true) onMicLaunch(currentDomain)
                             else viewModel.toggleWebsiteMicrophone(currentDomain, false)
                         },
                         colors = SwitchDefaults.colors(
@@ -4521,23 +4551,24 @@ fun HistoryPage(
     if (showClearConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showClearConfirmDialog = false },
-            title = { Text("Clear All History", fontFamily = activeFont, fontWeight = FontWeight.Bold) },
+            title = { Text(com.example.ui.BrowserTranslator.translateText("Clear All History", settings.language), fontFamily = activeFont, fontWeight = FontWeight.Bold) },
             text = { Text("Are you sure you want to permanently delete all browsing logs?", fontFamily = activeFont) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.clearBrowsingData()
                     showClearConfirmDialog = false
                 }) {
-                    Text("Clear All", color = Color(0xFFFF3B30), fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                    Text(com.example.ui.BrowserTranslator.translateText("Clear All", settings.language), color = Color(0xFFFF3B30), fontFamily = activeFont, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearConfirmDialog = false }) {
-                    Text("Cancel", fontFamily = activeFont)
+                    Text(com.example.ui.BrowserTranslator.translateText("Cancel", settings.language), fontFamily = activeFont)
                 }
             },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = if (isDark) Color(0xFF1E1E22) else Color.White
+            shape = RoundedCornerShape(26.dp),
+            containerColor = glassCardColor(isDark),
+            tonalElevation = 10.dp
         )
     }
 
@@ -4904,7 +4935,7 @@ fun DownloadsPage(
     if (itemToDelete != null) {
         AlertDialog(
             onDismissRequest = { itemToDelete = null },
-            title = { Text("Delete Download", fontFamily = activeFont, fontWeight = FontWeight.Bold) },
+            title = { Text(com.example.ui.BrowserTranslator.translateText("Delete Download", settings.language), fontFamily = activeFont, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     Text("Are you sure you want to remove this download from your history?", fontFamily = activeFont)
@@ -4917,10 +4948,13 @@ fun DownloadsPage(
                             checked = deleteFromStorage,
                             onCheckedChange = { deleteFromStorage = it }
                         )
-                        Text("Delete file from device", fontFamily = activeFont)
+                        Text(com.example.ui.BrowserTranslator.translateText("Delete file from device", settings.language), fontFamily = activeFont)
                     }
                 }
             },
+            shape = RoundedCornerShape(26.dp),
+            containerColor = glassCardColor(isDark),
+            tonalElevation = 10.dp,
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -4942,12 +4976,12 @@ fun DownloadsPage(
                         deleteFromStorage = false
                     }
                 ) {
-                    Text("Delete", color = dangerColor, fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                    Text(com.example.ui.BrowserTranslator.translateText("Delete", settings.language), color = dangerColor, fontFamily = activeFont, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { itemToDelete = null }) {
-                    Text("Cancel", fontFamily = activeFont)
+                    Text(com.example.ui.BrowserTranslator.translateText("Cancel", settings.language), fontFamily = activeFont)
                 }
             }
         )
@@ -4983,7 +5017,7 @@ fun DownloadsPage(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Downloads", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = textMain, fontFamily = activeFont)
+                Text(com.example.ui.BrowserTranslator.translateText("Downloads", settings.language), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = textMain, fontFamily = activeFont)
             }
 
             // Tabs
@@ -5054,7 +5088,7 @@ fun DownloadsPage(
             ) { items ->
                 if (items.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                        Text("No Downloads", color = textMuted, fontFamily = activeFont, fontSize = 15.sp)
+                        Text(com.example.ui.BrowserTranslator.translateText("No Downloads", settings.language), color = textMuted, fontFamily = activeFont, fontSize = 15.sp)
                     }
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -5162,7 +5196,7 @@ fun DownloadsPage(
                                     ) {
                                         if (downloadItem.status == "DOWNLOADING" || downloadItem.status == "PENDING") {
                                             DropdownMenuItem(
-                                                text = { Text("Pause", color = textMain, fontFamily = activeFont) },
+                                                text = { Text(com.example.ui.BrowserTranslator.translateText("Pause", settings.language), color = textMain, fontFamily = activeFont) },
                                                 onClick = {
                                                     isMenuExpanded = false
                                                     viewModel.pauseDownload(downloadItem.id, context)
@@ -5171,7 +5205,7 @@ fun DownloadsPage(
                                         }
                                         if (downloadItem.status == "PAUSED") {
                                             DropdownMenuItem(
-                                                text = { Text("Unpause", color = textMain, fontFamily = activeFont) },
+                                                text = { Text(com.example.ui.BrowserTranslator.translateText("Unpause", settings.language), color = textMain, fontFamily = activeFont) },
                                                 onClick = {
                                                     isMenuExpanded = false
                                                     viewModel.resumeDownload(downloadItem.id, context)
@@ -5180,7 +5214,7 @@ fun DownloadsPage(
                                         }
                                         if (downloadItem.status == "COMPLETED") {
                                             DropdownMenuItem(
-                                                text = { Text("Share file", color = textMain, fontFamily = activeFont) },
+                                                text = { Text(com.example.ui.BrowserTranslator.translateText("Share file", settings.language), color = textMain, fontFamily = activeFont) },
                                                 onClick = {
                                                     isMenuExpanded = false
                                                     shareDownloadedFile(context, downloadItem.filePath, downloadItem.mimeType)
@@ -5188,7 +5222,7 @@ fun DownloadsPage(
                                             )
                                         }
                                         DropdownMenuItem(
-                                            text = { Text("Delete file", color = dangerColor, fontFamily = activeFont) },
+                                            text = { Text(com.example.ui.BrowserTranslator.translateText("Delete file", settings.language), color = dangerColor, fontFamily = activeFont) },
                                             onClick = {
                                                 isMenuExpanded = false
                                                 itemToDelete = downloadItem
@@ -5234,7 +5268,7 @@ fun DownloadsPage(
                 singleLine = true,
                 decorationBox = { innerTextField ->
                     if (searchQuery.isEmpty()) {
-                        Text("Search downloads", color = textMuted, fontWeight = FontWeight.Medium, fontSize = 16.sp, fontFamily = activeFont)
+                        Text(com.example.ui.BrowserTranslator.translateText("Search downloads", settings.language), color = textMuted, fontWeight = FontWeight.Medium, fontSize = 16.sp, fontFamily = activeFont)
                     }
                     innerTextField()
                 }
@@ -6095,6 +6129,7 @@ fun FallbackBrowserSimulator(
     fontFamily: FontFamily,
     onNavigate: (String) -> Unit
 ) {
+    val language = LocalAppLanguage.current
     val scrollState = rememberScrollState()
     val url = activeTab?.url ?: ""
     val isSearch = url.contains("q=")
@@ -6316,7 +6351,7 @@ fun FallbackBrowserSimulator(
                                     containerColor = MaterialTheme.colorScheme.primary
                                 )
                             ) {
-                                Text("Go Home")
+                                Text(com.example.ui.BrowserTranslator.translateText("Go Home", language))
                             }
                         }
                     }
@@ -6516,7 +6551,7 @@ fun ColumnScope.SearchEngineSubPage(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Set Custom Search Engine", fontFamily = activeFont)
+                    Text(com.example.ui.BrowserTranslator.translateText("Set Custom Search Engine", settings.language), fontFamily = activeFont)
                 }
             }
         }
