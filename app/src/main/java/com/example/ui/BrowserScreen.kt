@@ -5572,6 +5572,7 @@ fun glassBorderColor(isDark: Boolean) = if (isDark) {
 
 fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Modifier = this.drawBehind {
     val size = this.size
+    if (size.width <= 0f || size.height <= 0f || size.width.isNaN() || size.height.isNaN()) return@drawBehind
     // 1. Base Gradient
     val baseBrush = if (isDark) {
         Brush.linearGradient(
