@@ -49,12 +49,8 @@ jobs:
 
       - name: Rename APK
         run: |
-          VERSION_NAME=${GITHUB_REF#refs/tags/v}
-          if [ "$VERSION_NAME" = "${GITHUB_REF}" ]; then
-            mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/BrowserApp-debug.apk
-          else
-            mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/BrowserApp-v${VERSION_NAME}-debug.apk
-          fi
+          VERSION=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | cut -d'"' -f2)
+          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/BrowserApp-v${VERSION}-debug.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -62,38 +58,25 @@ jobs:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Generate SHA-256
-        id: shasum
+      - name: Extract Version Name
+        id: version
         run: |
-          VERSION_NAME=${GITHUB_REF#refs/tags/v}
-          if [ "$VERSION_NAME" = "${GITHUB_REF}" ]; then
-            SHA256=$(sha256sum app/build/outputs/apk/debug/BrowserApp-debug.apk | awk '{ print $1 }')
-          else
-            SHA256=$(sha256sum app/build/outputs/apk/debug/BrowserApp-v${VERSION_NAME}-debug.apk | awk '{ print $1 }')
-          fi
+          VERSION=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | cut -d'"' -f2)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          SHA256=$(sha256sum app/build/outputs/apk/debug/BrowserApp-v${VERSION}-debug.apk | awk '{ print $1 }')
           echo "SHA256: $SHA256" > release-notes.txt
           echo "Added new features and bug fixes." >> release-notes.txt
-
-      - name: Create GitHub Release (Tag)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/outputs/apk/debug/BrowserApp-v*-debug.apk
-          body_path: release-notes.txt
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release (Latest on Main)
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: Latest Release
-          files: app/build/outputs/apk/debug/BrowserApp-debug.apk
+          tag_name: v${{ env.VERSION }}
+          name: Browser v${{ env.VERSION }}
+          files: app/build/outputs/apk/debug/BrowserApp-v${{ env.VERSION }}-debug.apk
           body_path: release-notes.txt
           draft: false
           prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

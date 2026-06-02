@@ -365,7 +365,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     animationSpec = androidx.compose.animation.core.tween(300),
                     label = "baseBlur"
                 )
-                Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
+                Box(modifier = Modifier.fillMaxSize().then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)) {
                     if (isTablet) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         AnimatedVisibility(
@@ -4632,7 +4632,7 @@ fun HistoryPage(
         color = Color.Transparent
     ) {
         val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (showClearConfirmDialog) 32.dp else 0.dp)
-        Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
+        Box(modifier = Modifier.fillMaxSize().then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -5047,7 +5047,7 @@ fun DownloadsPage(
         color = Color.Transparent
     ) {
         val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (itemToDelete != null) 32.dp else 0.dp)
-        Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
+        Box(modifier = Modifier.fillMaxSize().then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)) {
             // Content
             Column(
             modifier = Modifier

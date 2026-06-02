@@ -117,7 +117,7 @@ class MainActivity : AppCompatActivity() {
                                 
                                 androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
                                     val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (showChangelog) 32.dp else 0.dp)
-                                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
+                                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)) {
                                         BrowserScreen(viewModel = browserViewModel)
                                     }
                                     
