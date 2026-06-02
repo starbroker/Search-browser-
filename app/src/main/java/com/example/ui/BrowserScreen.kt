@@ -2342,13 +2342,13 @@ fun TabCard(
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         try {
                             val webView = viewModel.getOrCreateWebView(tab.id, context)
-                            val width = if (webView.width > 0) webView.width else 800
-                            val height = if (webView.height > 0) webView.height else 1200
+                            val width = (if (webView.width > 0) webView.width else 800).coerceAtMost(2000)
+                            val height = (if (webView.height > 0) webView.height else 1200).coerceAtMost(3000)
                             val bm = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
                             val canvas = android.graphics.Canvas(bm)
                             webView.draw(canvas)
                             bitmap = bm.asImageBitmap()
-                        } catch (e: Exception) {
+                        } catch (e: Throwable) {
                             // Ignored
                         }
                     }
