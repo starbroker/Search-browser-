@@ -142,56 +142,28 @@ fun OnboardingFlow(
                         .padding(horizontal = 24.dp, vertical = 20.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (step == 0) {
-                        Surface(
-                            color = glassCardColor(isDark),
-                            shape = CircleShape,
-                            modifier = Modifier
-                                .size(64.dp)
-                                .border(1.dp, glassBorderColor(isDark), CircleShape)
-                                .clickable {
-                                    step += 1
-                                }
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = "Continue",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(28.dp)
-                                )
+                    Surface(
+                        onClick = {
+                            if (step < 2) {
+                                step += 1
+                            } else {
+                                onComplete()
                             }
-                        }
-                    } else {
-                        Button(
-                            onClick = {
-                                if (step < 2) {
-                                    step += 1
-                                } else {
-                                    onComplete()
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(54.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            elevation = ButtonDefaults.buttonElevation(
-                                defaultElevation = 0.dp,
-                                pressedElevation = 2.dp
-                            )
+                        },
+                        color = glassCardColor(isDark),
+                        shape = CircleShape,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, glassBorderColor(isDark)),
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.fillMaxSize()
                         ) {
-                            Text(
-                                text = if (step == 2) "Launch Search" else "Continue",
-                                fontFamily = activeFont,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold
+                            Icon(
+                                imageVector = if (step == 2) Icons.Default.Check else Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Continue",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                     }
