@@ -1,7 +1,4 @@
 package com.example
-import androidx.compose.ui.draw.blur
-import androidx.compose.foundation.border
-
 
 import android.app.Application
 import android.content.Context
@@ -9,7 +6,9 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.collectAsState
@@ -89,78 +88,59 @@ class MainActivity : AppCompatActivity() {
                     color = androidx.compose.material3.MaterialTheme.colorScheme.background
                 ) {
                     androidx.compose.runtime.CompositionLocalProvider(com.example.ui.LocalAppLanguage provides settings.language) {
-                        androidx.compose.animation.AnimatedContent(
-                            targetState = onboardingComplete,
-                            transitionSpec = {
-                                if (targetState) {
-                                    (androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(600)) + 
-                                     androidx.compose.animation.scaleIn(
-                                         animationSpec = androidx.compose.animation.core.tween(600),
-                                         initialScale = 0.9f
-                                     )).togetherWith(
-                                         androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(400)) +
-                                         androidx.compose.animation.scaleOut(
-                                             animationSpec = androidx.compose.animation.core.tween(400),
-                                             targetScale = 1.1f
-                                         )
-                                     )
-                                } else {
-                                    androidx.compose.animation.fadeIn().togetherWith(androidx.compose.animation.fadeOut())
-                                }
-                            },
-                            label = "OnboardingTransition"
-                        ) { isComplete ->
-                            if (isComplete) {
-                                val isDarkContext = androidx.compose.foundation.isSystemInDarkTheme()
-                                val glassColor = if (isDarkContext) androidx.compose.ui.graphics.Color(0x33000000) else androidx.compose.ui.graphics.Color(0xB3FFFFFF)
-                                val glassBorder = if (isDarkContext) androidx.compose.ui.graphics.Color(0x4DFFFFFF) else androidx.compose.ui.graphics.Color(0x80FFFFFF)
-                                
-                                androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-                                    val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (showChangelog) 32.dp else 0.dp)
-                                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
+                            AnimatedContent(
+                                targetState = onboardingComplete,
+                                transitionSpec = {
+                                    (slideInVertically(initialOffsetY = { it }) + fadeIn(tween(500))).togetherWith(
+                                        slideOutVertically(targetOffsetY = { -it }) + fadeOut(tween(500))
+                                    )
+                                },
+                                label = "OnboardingTransition"
+                            ) { isComplete ->
+                                if (isComplete) {
+                                    Box(modifier = Modifier.fillMaxSize()) {
                                         BrowserScreen(viewModel = browserViewModel)
-                                    }
-                                    
-                                    if (showChangelog) {
-                                        androidx.compose.material3.AlertDialog(
-                                            onDismissRequest = { 
-                                                showChangelog = false
-                                                PreferenceHelper.lastVersionCode = BuildConfig.VERSION_CODE
-                                            },
-                                            modifier = Modifier.border(1.dp, glassBorder, androidx.compose.foundation.shape.RoundedCornerShape(26.dp)),
-                                            title = { androidx.compose.material3.Text(com.example.ui.BrowserTranslator.translateText("What's New", settings.language) + " ${BuildConfig.VERSION_NAME}") },
-                                            text = { 
-                                                androidx.compose.foundation.layout.Column {
-                                                    androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("All popups now feature a blurry glassy aesthetic", settings.language))
-                                                    androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Proper closing animation for welcome screen UI", settings.language))
-                                                    androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Bug fixes and performance improvements", settings.language))
-                                                }
-                                            },
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp),
-                                            containerColor = glassColor,
-                                            tonalElevation = 10.dp,
-                                            confirmButton = {
-                                                androidx.compose.material3.TextButton(onClick = { 
-                                                    showChangelog = false 
+                                        
+                                        if (showChangelog) {
+                                            androidx.compose.material3.AlertDialog(
+                                                onDismissRequest = { 
+                                                    showChangelog = false
                                                     PreferenceHelper.lastVersionCode = BuildConfig.VERSION_CODE
-                                                }) {
-                                                    androidx.compose.material3.Text(com.example.ui.BrowserTranslator.translateText("Got it", settings.language))
+                                                },
+                                                title = { androidx.compose.material3.Text(com.example.ui.BrowserTranslator.translateText("What's New", settings.language) + " ${BuildConfig.VERSION_NAME}") },
+                                                text = { 
+                                                    androidx.compose.foundation.layout.Column {
+                                                        androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Reduced APK Size", settings.language))
+                                                        androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Fast compile speeds", settings.language))
+                                                        androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Removed buggy tools", settings.language))
+                                                        androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Update welcome UI", settings.language))
+                                                    }
+                                                },
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp),
+                                                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                                                tonalElevation = 10.dp,
+                                                confirmButton = {
+                                                    androidx.compose.material3.TextButton(onClick = { 
+                                                        showChangelog = false 
+                                                        PreferenceHelper.lastVersionCode = BuildConfig.VERSION_CODE
+                                                    }) {
+                                                        androidx.compose.material3.Text(com.example.ui.BrowserTranslator.translateText("Got it", settings.language))
+                                                    }
                                                 }
-                                            }
-                                        )
+                                            )
+                                        }
                                     }
+                                } else {
+                                    com.example.ui.onboarding.OnboardingFlow(
+                                        viewModel = browserViewModel,
+                                        onComplete = {
+                                            PreferenceHelper.isOnboardingComplete = true
+                                            PreferenceHelper.lastVersionCode = BuildConfig.VERSION_CODE
+                                            onboardingComplete = true
+                                        }
+                                    )
                                 }
-                            } else {
-                                com.example.ui.onboarding.OnboardingFlow(
-                                    viewModel = browserViewModel,
-                                    onComplete = {
-                                        PreferenceHelper.isOnboardingComplete = true
-                                        onboardingComplete = true
-                                        PreferenceHelper.lastVersionCode = BuildConfig.VERSION_CODE
-                                    }
-                                )
                             }
-                        }
                     }
                 }
             }

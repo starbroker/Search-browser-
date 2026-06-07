@@ -143,17 +143,18 @@ fun OnboardingFlow(
                     contentAlignment = Alignment.Center
                 ) {
                     Surface(
-                        onClick = {
-                            if (step < 2) {
-                                step += 1
-                            } else {
-                                onComplete()
-                            }
-                        },
                         color = glassCardColor(isDark),
                         shape = CircleShape,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, glassBorderColor(isDark)),
-                        modifier = Modifier.size(64.dp)
+                        modifier = Modifier
+                            .size(64.dp)
+                            .border(1.dp, glassBorderColor(isDark), CircleShape)
+                            .clickable {
+                                if (step < 2) {
+                                    step += 1
+                                } else {
+                                    onComplete()
+                                }
+                            }
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
@@ -161,7 +162,7 @@ fun OnboardingFlow(
                         ) {
                             Icon(
                                 imageVector = if (step == 2) Icons.Default.Check else Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "Continue",
+                                contentDescription = if (step == 2) "Complete" else "Continue",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(28.dp)
                             )
@@ -416,7 +417,8 @@ fun LanguageScreen(
                                 com.example.util.PreferenceHelper.language = mappedLang
                                 viewModel.updateSettings(settings.copy(language = mappedLang))
                             }
-                            .padding(vertical = 14.dp),
+                            .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent)
+                            .padding(vertical = 14.dp, horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
@@ -521,7 +523,8 @@ fun SearchEngineScreen(
                                 com.example.util.PreferenceHelper.homePage = newHomeUrl
                                 viewModel.updateSettings(settings.copy(searchEngine = value, homeUrl = newHomeUrl))
                             }
-                            .padding(vertical = 16.dp),
+                            .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent)
+                            .padding(vertical = 16.dp, horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(

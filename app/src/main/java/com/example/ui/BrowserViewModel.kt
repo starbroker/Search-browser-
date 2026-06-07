@@ -193,72 +193,29 @@ class BrowserViewModel(
     )
     val appRedirectProposal = MutableStateFlow<AppRedirectProposal?>(null)
 
-    init {
-        // Pre-create cache directories to prevent Chromium logcat noise regarding missing opendir
-        try {
-            val appCtx = getApplication<Application>()
-            val baseCache = java.io.File(appCtx.cacheDir, "WebView/Default/HTTP Cache/Code Cache")
-            java.io.File(baseCache, "js").mkdirs()
-            java.io.File(baseCache, "wasm").mkdirs()
-        } catch (e: Exception) {}
-        
-        checkForAppUpdates()
-    }
+    data class AppUpdateInfo(val versionName: String, val releaseNotes: String, val downloadUrl: String)
+    private val _appUpdateProposal = MutableStateFlow<AppUpdateInfo?>(null)
+    val appUpdateProposal: StateFlow<AppUpdateInfo?> = _appUpdateProposal.asStateFlow()
 
-    data class ImageDownloadProposal(val url: String)
-    val imageDownloadProposal = MutableStateFlow<ImageDownloadProposal?>(null)
-    
-    data class AppUpdateProposal(
-        val latestVersion: String,
-        val releaseNotes: String,
-        val downloadUrl: String
-    )
-    val appUpdateProposal = MutableStateFlow<AppUpdateProposal?>(null)
-
-    fun checkForAppUpdates() {
+    private fun checkForUpdates() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val url = java.net.URL("https://api.github.com/repos/HimankC/StormX/releases/latest")
+                val url = java.net.URL("https://api.github.com/repos/himankcpro/Search/releases/latest")
                 val connection = url.openConnection() as java.net.HttpURLConnection
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
-
-                if (connection.responseCode == 200) {
-                    val stream = connection.inputStream
-                    val response = stream.bufferedReader().use { it.readText() }
-                    val json = org.json.JSONObject(response)
-                    val tagName = json.optString("tag_name", "")
-                    val releaseNotes = json.optString("body", "No release notes provided.")
+                connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val tagName = "\"tag_name\":\"(.*?)\"".toRegex().find(response)?.groups?.get(1)?.value
+                    val body = "\"body\":\"(.*?)\"".toRegex().find(response)?.groups?.get(1)?.value ?: "Updates are available"
+                    val apkUrl = "\"browser_download_url\":\"(.*?\\.apk)\"".toRegex().find(response)?.groups?.get(1)?.value
                     
-                    val assets = json.optJSONArray("assets")
-                    var downloadUrl = ""
-                    if (assets != null && assets.length() > 0) {
-                        for (i in 0 until assets.length()) {
-                            val asset = assets.getJSONObject(i)
-                            if (asset.optString("name", "").endsWith(".apk")) {
-                                downloadUrl = asset.optString("browser_download_url", "")
-                                break
+                    if (tagName != null && apkUrl != null) {
+                        val currentVersion = "v" + com.example.BuildConfig.VERSION_NAME
+                        if (tagName != currentVersion && tagName != com.example.BuildConfig.VERSION_NAME) {
+                            withContext(Dispatchers.Main) {
+                                _appUpdateProposal.value = AppUpdateInfo(tagName, body.replace("\\n", "\n").replace("\\r", "").replace("\\\"", "\""), apkUrl)
                             }
-                        }
-                        if (downloadUrl.isEmpty()) {
-                            downloadUrl = assets.getJSONObject(0).optString("browser_download_url", "")
-                        }
-                    } else {
-                        downloadUrl = json.optString("html_url", "")
-                    }
-
-                    val currentVersion = com.example.BuildConfig.VERSION_NAME
-                    val tagClean = tagName.removePrefix("v").trim()
-                    val currentClean = currentVersion.removePrefix("v").trim()
-
-                    if (tagClean.isNotEmpty() && tagClean != currentClean) {
-                        withContext(Dispatchers.Main) {
-                            appUpdateProposal.value = AppUpdateProposal(
-                                latestVersion = tagName,
-                                releaseNotes = releaseNotes,
-                                downloadUrl = downloadUrl
-                            )
                         }
                     }
                 }
@@ -268,11 +225,28 @@ class BrowserViewModel(
         }
     }
     
+    fun dismissAppUpdate() {
+        _appUpdateProposal.value = null
+    }
+
+    init {
+        checkForUpdates()
+        // Pre-create cache directories to prevent Chromium logcat noise regarding missing opendir
+        try {
+            val appCtx = getApplication<Application>()
+            val baseCache = java.io.File(appCtx.cacheDir, "WebView/Default/HTTP Cache/Code Cache")
+            java.io.File(baseCache, "js").mkdirs()
+            java.io.File(baseCache, "wasm").mkdirs()
+        } catch (e: Exception) {}
+    }
+
+    data class ImageDownloadProposal(val url: String)
+    val imageDownloadProposal = MutableStateFlow<ImageDownloadProposal?>(null)
+    
     data class PermissionProposal(
         val domain: String,
         val request: android.webkit.PermissionRequest? = null,
         val resourcesNeeded: List<String> = emptyList(),
-        val autoGranted: List<String> = emptyList(),
         val geoCallback: android.webkit.GeolocationPermissions.Callback? = null,
         val geoOrigin: String? = null
     )
@@ -324,7 +298,7 @@ class BrowserViewModel(
                 microphoneAllowed = perms.find { it.permissionType == "microphone" }?.isGranted
             )
         }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private fun saveSitePermissionProxy(domain: String, type: String, allowed: Boolean) {
         viewModelScope.launch {
@@ -831,7 +805,7 @@ class BrowserViewModel(
                         }
                     }
                     if (resourcesNeeded.isNotEmpty()) {
-                        permissionRequestProposal.value = PermissionProposal(domain, request, resourcesNeeded, autoGrantedResources)
+                        permissionRequestProposal.value = PermissionProposal(domain, request, resourcesNeeded)
                     } else if (autoGrantedResources.isNotEmpty()) {
                         request.grant(autoGrantedResources.toTypedArray())
                     } else {
@@ -903,7 +877,7 @@ class BrowserViewModel(
         val proposal = permissionRequestProposal.value ?: return
         if (grant) {
             try {
-                proposal.request?.grant((proposal.resourcesNeeded + proposal.autoGranted).toTypedArray())
+                proposal.request?.grant(proposal.resourcesNeeded.toTypedArray())
             } catch (e: Exception) {}
             try {
                 proposal.geoCallback?.invoke(proposal.geoOrigin, true, remember) // geoCallback takes remember boolean directly
