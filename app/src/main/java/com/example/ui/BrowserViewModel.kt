@@ -1289,7 +1289,9 @@ class BrowserViewModel(
         
         viewModelScope.launch(Dispatchers.IO) {
             // Save in Room DB
-            val destinationPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath + "/" + fileName
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadDir.exists()) downloadDir.mkdirs()
+            val destinationPath = downloadDir.absolutePath + "/" + fileName
             val downloadId = repository.addDownload(url, fileName, destinationPath, contentLength, mimeType)
             
             if (url.startsWith("data:")) {
