@@ -165,12 +165,12 @@ class BrowserViewModel(
         val webView = webViewMap[tabId]
         if (webView != null) {
             try {
-                val width = webView.width.coerceAtMost(2000)
-                val height = webView.height.coerceAtMost(3000)
+                val width = webView.width
+                val height = webView.height
                 if (width > 0 && height > 0) {
                     val ratio = 0.25f
-                    val scaledWidth = (width * ratio).toInt().coerceAtLeast(1)
-                    val scaledHeight = (height * ratio).toInt().coerceAtLeast(1)
+                    val scaledWidth = (width * ratio).toInt()
+                    val scaledHeight = (height * ratio).toInt()
                     val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
                     val canvas = android.graphics.Canvas(bitmap)
                     webView.draw(canvas)
@@ -180,7 +180,7 @@ class BrowserViewModel(
                         bitmap.recycle()
                     }
                 }
-            } catch(e: Throwable) {}
+            } catch(e: Exception) {}
         }
         showTabsOverview.value = true
     }
@@ -715,7 +715,7 @@ class BrowserViewModel(
                                     var items = document.querySelectorAll('.result, .result-content, #search_form');
                                     for(var i=0; i<items.length; i++) {
                                         items[i].style.background = 'rgba(255,255,255,0.05)';
-                                        items[i].style.backdropFilter = 'blur(2px)';
+                                        items[i].style.backdropFilter = 'blur(16px)';
                                         items[i].style.borderRadius = '20px';
                                         items[i].style.border = '1px solid rgba(255,255,255,0.08)';
                                     }
@@ -741,7 +741,7 @@ class BrowserViewModel(
                                     var items = document.querySelectorAll('.result, .result-content, #search_form');
                                     for(var i=0; i<items.length; i++) {
                                         items[i].style.background = 'rgba(255,255,255,0.6)';
-                                        items[i].style.backdropFilter = 'blur(2px)';
+                                        items[i].style.backdropFilter = 'blur(16px)';
                                         items[i].style.borderRadius = '20px';
                                         items[i].style.border = '1px solid rgba(0,0,0,0.05)';
                                         items[i].style.boxShadow = '0 8px 32px rgba(0,0,0,0.04)';
@@ -1289,9 +1289,7 @@ class BrowserViewModel(
         
         viewModelScope.launch(Dispatchers.IO) {
             // Save in Room DB
-            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!downloadDir.exists()) downloadDir.mkdirs()
-            val destinationPath = downloadDir.absolutePath + "/" + fileName
+            val destinationPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath + "/" + fileName
             val downloadId = repository.addDownload(url, fileName, destinationPath, contentLength, mimeType)
             
             if (url.startsWith("data:")) {

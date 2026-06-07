@@ -128,7 +128,7 @@ class DownloadService : Service() {
             }
             activeJobs.remove(id)
             if (activeJobs.isEmpty()) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopForeground(true)
             }
         }
     }
@@ -412,7 +412,7 @@ class DownloadService : Service() {
     private fun cleanupJob(id: Int) {
         activeJobs.remove(id)
         if (activeJobs.isEmpty()) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopForeground(true)
         }
     }
     
@@ -458,7 +458,7 @@ class DownloadService : Service() {
             }
             activeJobs.remove(id)
             if (activeJobs.isEmpty()) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopForeground(true)
             }
         }
     }

@@ -360,7 +360,12 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 // Determine layout direction for navigation bar
                 val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
-                                Box(modifier = Modifier.fillMaxSize()) {
+                val blurRadius by androidx.compose.animation.core.animateDpAsState(
+                    targetValue = if (isAnyDrawerOpen) 32.dp else 0.dp,
+                    animationSpec = androidx.compose.animation.core.tween(300),
+                    label = "baseBlur"
+                )
+                Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
                     if (isTablet) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         AnimatedVisibility(
@@ -2342,13 +2347,13 @@ fun TabCard(
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         try {
                             val webView = viewModel.getOrCreateWebView(tab.id, context)
-                            val width = (if (webView.width > 0) webView.width else 800).coerceAtMost(2000)
-                            val height = (if (webView.height > 0) webView.height else 1200).coerceAtMost(3000)
+                            val width = if (webView.width > 0) webView.width else 800
+                            val height = if (webView.height > 0) webView.height else 1200
                             val bm = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
                             val canvas = android.graphics.Canvas(bm)
                             webView.draw(canvas)
                             bitmap = bm.asImageBitmap()
-                        } catch (e: Throwable) {
+                        } catch (e: Exception) {
                             // Ignored
                         }
                     }
@@ -4626,7 +4631,8 @@ fun HistoryPage(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-                Box(modifier = Modifier.fillMaxSize()) {
+        val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (showClearConfirmDialog) 32.dp else 0.dp)
+        Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -5040,7 +5046,8 @@ fun DownloadsPage(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-                Box(modifier = Modifier.fillMaxSize()) {
+        val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (itemToDelete != null) 32.dp else 0.dp)
+        Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
             // Content
             Column(
             modifier = Modifier
@@ -5572,7 +5579,6 @@ fun glassBorderColor(isDark: Boolean) = if (isDark) {
 
 fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Modifier = this.drawBehind {
     val size = this.size
-    if (size.width <= 0f || size.height <= 0f || size.width.isNaN() || size.height.isNaN()) return@drawBehind
     // 1. Base Gradient
     val baseBrush = if (isDark) {
         Brush.linearGradient(
@@ -5596,10 +5602,10 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
         brush = Brush.radialGradient(
             colors = listOf(topRightColor, Color.Transparent),
             center = topRightCenter,
-            radius = (size.width * 0.85f).coerceAtLeast(1f)
+            radius = size.width * 0.85f
         ),
         center = topRightCenter,
-        radius = (size.width * 0.85f).coerceAtLeast(1f),
+        radius = size.width * 0.85f,
         alpha = alpha
     )
 
@@ -5610,10 +5616,10 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
         brush = Brush.radialGradient(
             colors = listOf(bottomLeftColor, Color.Transparent),
             center = bottomLeftCenter,
-            radius = (size.width * 0.85f).coerceAtLeast(1f)
+            radius = size.width * 0.85f
         ),
         center = bottomLeftCenter,
-        radius = (size.width * 0.85f).coerceAtLeast(1f),
+        radius = size.width * 0.85f,
         alpha = alpha
     )
     
@@ -5625,10 +5631,10 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
             brush = Brush.radialGradient(
                 colors = listOf(centerRightColor, Color.Transparent),
                 center = centerRightOffset,
-                radius = (size.width * 0.7f).coerceAtLeast(1f)
+                radius = size.width * 0.7f
             ),
             center = centerRightOffset,
-            radius = (size.width * 0.7f).coerceAtLeast(1f),
+            radius = size.width * 0.7f,
             alpha = alpha
         )
     } else {
@@ -5638,10 +5644,10 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
             brush = Brush.radialGradient(
                 colors = listOf(centerRightColor, Color.Transparent),
                 center = centerRightOffset,
-                radius = (size.width * 0.7f).coerceAtLeast(1f)
+                radius = size.width * 0.7f
             ),
             center = centerRightOffset,
-            radius = (size.width * 0.7f).coerceAtLeast(1f),
+            radius = size.width * 0.7f,
             alpha = alpha
         )
     }

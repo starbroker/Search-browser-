@@ -4,15 +4,16 @@ on:
   push:
     branches:
       - main
-      - master
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
-      pull-requests: write
 
     steps:
       - name: Checkout Repository
@@ -23,14 +24,21 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        
+      - name: Accept Android licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+
+      - name: Clean Gradle wrapper
+        run: |
+          rm -f gradle/wrapper/gradle-wrapper.jar
+          gradle wrapper --gradle-version 9.3.1
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          cache-disabled: true
 
       - name: Generate Debug Keystore
         run: |
@@ -41,35 +49,51 @@ jobs:
 
       - name: Rename APK
         run: |
-          VERSION=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | cut -d'"' -f2)
-          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/BrowserApp-v${VERSION}-debug.apk
+          VERSION_NAME=${GITHUB_REF#refs/tags/v}
+          if [ "$VERSION_NAME" = "${GITHUB_REF}" ]; then
+            mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/BrowserApp-debug.apk
+          else
+            mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/BrowserApp-v${VERSION_NAME}-debug.apk
+          fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Browser-APK
+          name: app-debug
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Extract Version Name
-        id: version
+      - name: Generate SHA-256
+        id: shasum
         run: |
-          VERSION=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | cut -d'"' -f2)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          SHA256=$(sha256sum app/build/outputs/apk/debug/BrowserApp-v${VERSION}-debug.apk | awk '{ print $1 }')
+          VERSION_NAME=${GITHUB_REF#refs/tags/v}
+          if [ "$VERSION_NAME" = "${GITHUB_REF}" ]; then
+            SHA256=$(sha256sum app/build/outputs/apk/debug/BrowserApp-debug.apk | awk '{ print $1 }')
+          else
+            SHA256=$(sha256sum app/build/outputs/apk/debug/BrowserApp-v${VERSION_NAME}-debug.apk | awk '{ print $1 }')
+          fi
           echo "SHA256: $SHA256" > release-notes.txt
           echo "Added new features and bug fixes." >> release-notes.txt
 
-      - name: Create GitHub Release
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      - name: Create GitHub Release (Tag)
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.VERSION }}
-          name: Browser v${{ env.VERSION }}
-          files: app/build/outputs/apk/debug/BrowserApp-v${{ env.VERSION }}-debug.apk
+          files: app/build/outputs/apk/debug/BrowserApp-v*-debug.apk
           body_path: release-notes.txt
           draft: false
           prerelease: false
-          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Create GitHub Release (Latest on Main)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Release
+          files: app/build/outputs/apk/debug/BrowserApp-debug.apk
+          body_path: release-notes.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

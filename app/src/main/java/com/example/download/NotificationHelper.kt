@@ -100,7 +100,7 @@ object NotificationHelper {
 
     fun buildCompleteNotification(context: Context, task: DownloadTask): Notification {
         val file = File(task.filePath)
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, task.mimeType ?: "*/*")

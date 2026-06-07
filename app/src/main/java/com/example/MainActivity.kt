@@ -116,7 +116,8 @@ class MainActivity : AppCompatActivity() {
                                 val glassBorder = if (isDarkContext) androidx.compose.ui.graphics.Color(0x4DFFFFFF) else androidx.compose.ui.graphics.Color(0x80FFFFFF)
                                 
                                 androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-                                                                        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+                                    val blurRadius by androidx.compose.animation.core.animateDpAsState(targetValue = if (showChangelog) 32.dp else 0.dp)
+                                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
                                         BrowserScreen(viewModel = browserViewModel)
                                     }
                                     
@@ -133,7 +134,6 @@ class MainActivity : AppCompatActivity() {
                                                     androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("All popups now feature a blurry glassy aesthetic", settings.language))
                                                     androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Proper closing animation for welcome screen UI", settings.language))
                                                     androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Bug fixes and performance improvements", settings.language))
-                                                    androidx.compose.material3.Text("• " + com.example.ui.BrowserTranslator.translateText("Fixed blur crashes and missing icon issues", settings.language))
                                                 }
                                             },
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp),
