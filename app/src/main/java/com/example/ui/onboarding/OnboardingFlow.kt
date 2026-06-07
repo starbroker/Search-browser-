@@ -243,7 +243,7 @@ fun WelcomeScreen(activeFont: FontFamily, isDark: Boolean) {
             contentAlignment = Alignment.Center
         ) {
             androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(id = com.example.R.mipmap.ic_launcher_round),
+                painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.ic_launcher_foreground),
                 contentDescription = "App Icon",
                 modifier = Modifier
                     .size(80.dp)
