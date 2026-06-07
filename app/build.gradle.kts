@@ -26,8 +26,8 @@ android {
     applicationId = "com.aistudio.aetherbrowser.qwexza"
     minSdk = 24
     targetSdk = 35
-    versionCode = 6
-    versionName = "2.2.0"
+    versionCode = 5
+    versionName = "2.1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -117,7 +117,7 @@ dependencies {
   // implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
-
+  implementation(libs.haze)
   
   // Security
   implementation("androidx.security:security-crypto-ktx:1.1.0-alpha06")

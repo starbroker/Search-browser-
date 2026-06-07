@@ -12,8 +12,6 @@ object PreferenceHelper {
     private const val KEY_PAGE_ZOOM = "pageZoom"
     private const val KEY_HOME_PAGE = "homePage"
     private const val KEY_SEARCH_ENGINE = "searchEngine"
-    private const val KEY_ONBOARDING_COMPLETE = "onboardingComplete"
-    private const val KEY_LAST_VERSION_CODE = "lastVersionCode"
 
     private lateinit var prefs: SharedPreferences
 
@@ -43,15 +41,11 @@ object PreferenceHelper {
         get() = prefs.getString(KEY_HOME_PAGE, "https://search.stormx.ninja/") ?: "https://search.stormx.ninja/"
         set(value) = prefs.edit().putString(KEY_HOME_PAGE, value).apply()
 
+    var isFirstLaunch: Boolean
+        get() = prefs.getBoolean("isFirstLaunch", true)
+        set(value) = prefs.edit().putBoolean("isFirstLaunch", value).apply()
+
     var searchEngine: String
         get() = prefs.getString(KEY_SEARCH_ENGINE, "Google") ?: "Google"
         set(value) = prefs.edit().putString(KEY_SEARCH_ENGINE, value).apply()
-
-    var isOnboardingComplete: Boolean
-        get() = prefs.getBoolean(KEY_ONBOARDING_COMPLETE, false)
-        set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_COMPLETE, value).apply()
-
-    var lastVersionCode: Int
-        get() = prefs.getInt(KEY_LAST_VERSION_CODE, 0)
-        set(value) { prefs.edit().putInt(KEY_LAST_VERSION_CODE, value).commit() }
 }

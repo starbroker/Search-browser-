@@ -157,6 +157,7 @@ class BrowserViewModel(
     val showDownloads = MutableStateFlow(false)
     val showShieldPanel = MutableStateFlow(false)
     val showMenuDrawer = MutableStateFlow(false)
+    val showWelcomeScreen = MutableStateFlow(com.example.util.PreferenceHelper.isFirstLaunch)
 
     val tabPreviews = androidx.compose.runtime.mutableStateMapOf<Int, android.graphics.Bitmap>()
 
@@ -193,44 +194,7 @@ class BrowserViewModel(
     )
     val appRedirectProposal = MutableStateFlow<AppRedirectProposal?>(null)
 
-    data class AppUpdateInfo(val versionName: String, val releaseNotes: String, val downloadUrl: String)
-    private val _appUpdateProposal = MutableStateFlow<AppUpdateInfo?>(null)
-    val appUpdateProposal: StateFlow<AppUpdateInfo?> = _appUpdateProposal.asStateFlow()
-
-    private fun checkForUpdates() {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val url = java.net.URL("https://api.github.com/repos/himankcpro/Search/releases/latest")
-                val connection = url.openConnection() as java.net.HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    val tagName = "\"tag_name\":\"(.*?)\"".toRegex().find(response)?.groups?.get(1)?.value
-                    val body = "\"body\":\"(.*?)\"".toRegex().find(response)?.groups?.get(1)?.value ?: "Updates are available"
-                    val apkUrl = "\"browser_download_url\":\"(.*?\\.apk)\"".toRegex().find(response)?.groups?.get(1)?.value
-                    
-                    if (tagName != null && apkUrl != null) {
-                        val currentVersion = "v" + com.example.BuildConfig.VERSION_NAME
-                        if (tagName != currentVersion && tagName != com.example.BuildConfig.VERSION_NAME) {
-                            withContext(Dispatchers.Main) {
-                                _appUpdateProposal.value = AppUpdateInfo(tagName, body.replace("\\n", "\n").replace("\\r", "").replace("\\\"", "\""), apkUrl)
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-    
-    fun dismissAppUpdate() {
-        _appUpdateProposal.value = null
-    }
-
     init {
-        checkForUpdates()
         // Pre-create cache directories to prevent Chromium logcat noise regarding missing opendir
         try {
             val appCtx = getApplication<Application>()
@@ -374,7 +338,49 @@ class BrowserViewModel(
         }
     }
 
+    data class UpdateProposal(val newVersion: String, val downloadUrl: String, val releaseNotes: String)
+    val updateProposal = MutableStateFlow<UpdateProposal?>(null)
+
+    private suspend fun checkForUpdates() {
+        withContext(Dispatchers.IO) {
+            try {
+                val currentVersion = getApplication<Application>().packageManager
+                    .getPackageInfo(getApplication<Application>().packageName, 0).versionName ?: "1.0.0"
+                
+                val url = URL("https://api.github.com/repos/HimankCPro/Aether/releases/latest")
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                
+                if (connection.responseCode == 200) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val json = org.json.JSONObject(response)
+                    val tagName = json.getString("tag_name").removePrefix("v")
+                    val body = json.getString("body")
+                    val assets = json.getJSONArray("assets")
+                    var downloadUrl = ""
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        if (asset.getString("name").endsWith(".apk")) {
+                            downloadUrl = asset.getString("browser_download_url")
+                            break
+                        }
+                    }
+                    
+                    if (tagName != currentVersion && downloadUrl.isNotEmpty()) {
+                        updateProposal.value = UpdateProposal(tagName, downloadUrl, body)
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore API failures silently
+            }
+        }
+    }
+
     init {
+        viewModelScope.launch {
+            checkForUpdates()
+        }
         val startSimulated = prefs.getBoolean("force_simulated_mode", false)
         _forceSimulatedMode.value = startSimulated
 
@@ -560,7 +566,6 @@ class BrowserViewModel(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
             )
             settings.apply {
-                setGeolocationEnabled(true)
                 javaScriptEnabled = true
                 domStorageEnabled = true
                 databaseEnabled = true
@@ -1219,12 +1224,6 @@ class BrowserViewModel(
         viewModelScope.launch {
             val current = repository.getSettings()
             repository.saveSettings(current.copy(speedDialLayout = layout))
-        }
-    }
-
-    fun updateSettings(newSettings: BrowserSettings) {
-        viewModelScope.launch {
-            repository.saveSettings(newSettings)
         }
     }
 
