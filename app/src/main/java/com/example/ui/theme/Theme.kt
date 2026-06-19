@@ -22,11 +22,18 @@ fun SearchAppTheme(
     val view = androidx.compose.ui.platform.LocalView.current
     if (!view.isInEditMode) {
         androidx.compose.runtime.SideEffect {
-            val window = (view.context as android.app.Activity).window
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-            window.navigationBarColor = android.graphics.Color.TRANSPARENT
-            androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
-            androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
+            var context = view.context
+            while (context is android.content.ContextWrapper) {
+                if (context is android.app.Activity) break
+                context = context.baseContext
+            }
+            val window = (context as? android.app.Activity)?.window
+            if (window != null) {
+                window.statusBarColor = android.graphics.Color.TRANSPARENT
+                window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+                androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
+            }
         }
     }
 

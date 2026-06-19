@@ -100,7 +100,6 @@ fun GlassyDialog(
             modifier = Modifier
                 .widthIn(max = 340.dp)
                 .padding(24.dp)
-                .hazeChild(state = hazeState, style = HazeStyle(blurRadius = 30.dp, tint = null))
                 .background(bgColor, RoundedCornerShape(28.dp))
                 .border(1.5.dp, borderColor, RoundedCornerShape(28.dp))
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}) // absorb clicks
@@ -1109,7 +1108,6 @@ fun BrowserHeader(
         shadowElevation = 8.dp,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier
-            .hazeChild(state = hazeState, style = dev.chrisbanes.haze.HazeStyle(backgroundColor = Color.Transparent, tint = null, blurRadius = 24.dp))
             .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 4.dp)
             .border(
                 width = 1.dp,
@@ -1283,7 +1281,6 @@ fun PersistentNavigationBar(
         shadowElevation = 8.dp,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier
-            .hazeChild(state = hazeState, style = dev.chrisbanes.haze.HazeStyle(backgroundColor = Color.Transparent, tint = null, blurRadius = 24.dp))
             .padding(
                 start = if (isTablet) 8.dp else 14.dp,
                 end = if (isTablet) 8.dp else 14.dp,
