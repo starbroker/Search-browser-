@@ -340,11 +340,13 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
                 val blurRadius by androidx.compose.animation.core.animateDpAsState(
-                    targetValue = if (isAnyDrawerOpen) 16.dp else 0.dp,
-                    animationSpec = androidx.compose.animation.core.tween(300),
+                    targetValue = if (isAnyDrawerOpen) {
+                        if (settings.batterySaverModeEnabled) 0.dp else 16.dp
+                    } else 0.dp,
+                    animationSpec = if (settings.batterySaverModeEnabled) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(300),
                     label = "baseBlur"
                 )
-                Box(modifier = Modifier.fillMaxSize().then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)) {
+                Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
                     if (isTablet) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         AnimatedVisibility(
@@ -591,6 +593,15 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 }
                 } // End Blur Box
 
+            val isModalDrawerOpen = showShield || showMenuDrawer || imageDownloadProposal != null || permissionProposal != null || showOsSettingsRedirect
+            val modalBlurRadius by androidx.compose.animation.core.animateDpAsState(
+                targetValue = if (isModalDrawerOpen) {
+                    if (settings.batterySaverModeEnabled) 0.dp else 16.dp
+                } else 0.dp,
+                animationSpec = if (settings.batterySaverModeEnabled) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(300),
+                label = "modalBlur"
+            )
+            Box(modifier = Modifier.fillMaxSize().blur(modalBlurRadius)) {
             // Overlay Sheets/Dialogs triggered dynamically
             AnimatedVisibility(
                 visible = showTabs,
@@ -664,6 +675,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     onDismiss = { viewModel.showDownloads.value = false }
                 )
             }
+            } // End Modal Blur Box
 
             if (showMenuDrawer) {
                 MenuDrawerSheet(
@@ -1504,7 +1516,7 @@ fun PersistentNavigationBar(
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
-                    .clickable { viewModel.showMenuDrawer.value = true }
+                    .clickable { viewModel.openMenuDrawer() }
                     .padding(8.dp)
                     .testTag("settings_button"),
                 contentAlignment = Alignment.Center
@@ -1539,10 +1551,14 @@ fun MenuDrawerSheet(
     val context = androidx.compose.ui.platform.LocalContext.current
     val solidColor = if (isDark) Color(0xA61E1E23) else Color(0xA6FAFAFA)
 
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
         containerColor = solidColor,
+        scrimColor = Color.Transparent,
         tonalElevation = 10.dp,
         dragHandle = {
             BottomSheetDefaults.DragHandle(
@@ -1607,7 +1623,7 @@ fun MenuDrawerSheet(
                         activeFont = activeFont,
                         isDark = isDark,
                         onClick = {
-                            viewModel.showBookmarks.value = true
+                            viewModel.openBookmarks()
                             onDismiss()
                         }
                     )
@@ -1619,7 +1635,7 @@ fun MenuDrawerSheet(
                         activeFont = activeFont,
                         isDark = isDark,
                         onClick = {
-                            viewModel.showHistory.value = true
+                            viewModel.openHistory()
                             onDismiss()
                         }
                     )
@@ -1638,7 +1654,7 @@ fun MenuDrawerSheet(
                         activeFont = activeFont,
                         isDark = isDark,
                         onClick = {
-                            viewModel.showDownloads.value = true
+                            viewModel.openDownloads()
                             onDismiss()
                         }
                     )
@@ -1667,7 +1683,7 @@ fun MenuDrawerSheet(
                             RoundedCornerShape(20.dp)
                         )
                         .clickable {
-                            viewModel.showShieldPanel.value = true
+                            viewModel.openShield()
                             onDismiss()
                         }
                 ) {
@@ -1737,7 +1753,7 @@ fun MenuDrawerSheet(
                             RoundedCornerShape(20.dp)
                         )
                         .clickable {
-                            viewModel.showSettings.value = true
+                            viewModel.openSettings()
                             onDismiss()
                         }
                 ) {
@@ -1906,10 +1922,14 @@ fun ShieldDashboardSheet(
     }
     val solidColor = if (isDark) Color(0xA6141416) else Color(0xA6F5F6F8)
 
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     ModalBottomSheet(
         onDismissRequest = { viewModel.showShieldPanel.value = false },
+        sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         containerColor = solidColor,
+        scrimColor = Color.Transparent,
         tonalElevation = 10.dp,
         dragHandle = {
             BottomSheetDefaults.DragHandle(
@@ -2700,10 +2720,12 @@ fun TabsOverviewPage(
                             )
                         }
                     }
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = { 
+                        viewModel.openMenuDrawer()
+                    }) {
                         Icon(
                             imageVector = Icons.Default.Menu,
-                            contentDescription = "Menu Placeholder",
+                            contentDescription = "Menu active",
                             tint = if (isDark) Color.White else Color(0xFF1C1C1E),
                             modifier = Modifier.size(26.dp)
                         )
@@ -3085,11 +3107,11 @@ fun TabsOverviewPage(
                                 Box(modifier = Modifier) {
                                     Surface(
                                         color = if (isDark) Color(0x0aFFFFFF) else Color(0x0a000000),
-                                        shape = RoundedCornerShape(24.dp),
+                                        shape = RoundedCornerShape(20.dp),
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .aspectRatio(0.85f)
-                                            .clip(RoundedCornerShape(24.dp))
+                                            .height(180.dp)
+                                            .clip(RoundedCornerShape(20.dp))
                                             .clickable {
                                                 viewModel.addNewTab()
                                                 onDismiss()
@@ -3097,7 +3119,7 @@ fun TabsOverviewPage(
                                             .border(
                                                 1.dp,
                                                 if (isDark) Color(0x1aFFFFFF) else Color(0x1a000000),
-                                                RoundedCornerShape(24.dp)
+                                                RoundedCornerShape(20.dp)
                                             )
                                     ) {
                                         Column(
@@ -3166,7 +3188,8 @@ fun SettingsSheet(
 
     val showGeneralGroup = query.isEmpty() || 
         "search engine".contains(query) || "google".contains(query) || "bing".contains(query) || "yahoo".contains(query) || "duckduckgo".contains(query) || "stormx".contains(query) ||
-        "languages".contains(query) || "english".contains(query) || "chinese".contains(query) || "spanish".contains(query) || "german".contains(query) || "french".contains(query)
+        "languages".contains(query) || "english".contains(query) || "chinese".contains(query) || "spanish".contains(query) || "german".contains(query) || "french".contains(query) ||
+        "battery saver mode".contains(query) || "battery".contains(query) || "performance".contains(query) || "power".contains(query)
 
     val showCustomizationGroup = query.isEmpty() ||
         "appearance".contains(query) || "typography".contains(query) || "font".contains(query) || "spacing".contains(query) || "theme".contains(query) || "accent".contains(query) || "customization".contains(query) ||
@@ -3444,6 +3467,59 @@ fun SettingsSheet(
                                     imageVector = Icons.Default.KeyboardArrowRight,
                                     contentDescription = "Go",
                                     tint = (if (isDark) Color.White else Color.Black).copy(alpha = 0.3f)
+                                )
+                            }
+                            
+                            HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
+
+                            // Battery Saver Mode Option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { 
+                                        viewModel.updateSettings(settings.copy(batterySaverModeEnabled = !settings.batterySaverModeEnabled))
+                                    }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.BatterySaver,
+                                        contentDescription = "Battery Saver Icon",
+                                        tint = Color(0xFF0066FF),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Battery Saver Mode",
+                                        fontFamily = activeFont,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                                    )
+                                    Text(
+                                        text = "Reduces refresh rate and animation complexity to save power",
+                                        fontFamily = activeFont,
+                                        fontSize = 12.sp,
+                                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                                    )
+                                }
+                                Switch(
+                                    checked = settings.batterySaverModeEnabled,
+                                    onCheckedChange = { 
+                                        viewModel.updateSettings(settings.copy(batterySaverModeEnabled = it))
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFF0066FF)
+                                    )
                                 )
                             }
                         }
@@ -4036,11 +4112,13 @@ fun SettingsSheet(
                                 )
                             }
                         }
-                        IconButton(onClick = { /* Already on Menu/Settings page */ }) {
+                        IconButton(onClick = { 
+                            viewModel.openMenuDrawer()
+                        }) {
                             Icon(
                                 imageVector = Icons.Default.Menu,
                                 contentDescription = "Menu active",
-                                tint = Color(0xFF0066FF),
+                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -4764,8 +4842,7 @@ fun BookmarksPage(
                     }
                 }
                 IconButton(onClick = {
-                    viewModel.showMenuDrawer.value = true
-                    onDismiss()
+                    viewModel.openMenuDrawer()
                 }) {
                     Icon(
                         imageVector = Icons.Default.Menu,
@@ -5125,8 +5202,7 @@ fun HistoryPage(
                     }
                 }
                 IconButton(onClick = {
-                    viewModel.showMenuDrawer.value = true
-                    onDismiss()
+                    viewModel.openMenuDrawer()
                 }) {
                     Icon(
                         imageVector = Icons.Default.Menu,
@@ -5338,7 +5414,11 @@ fun DownloadsPage(
             AnimatedContent(
                 targetState = filteredDownloads,
                 transitionSpec = {
-                    fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                    if (settings.batterySaverModeEnabled) {
+                        fadeIn(animationSpec = snap()) togetherWith fadeOut(animationSpec = snap())
+                    } else {
+                        fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                    }
                 },
                 label = "Download List Transition"
             ) { items ->
@@ -5353,7 +5433,7 @@ fun DownloadsPage(
                             val isCompleted = downloadItem.status == "COMPLETED"
                             val isDownloading = downloadItem.status == "DOWNLOADING"
                             val progress = if (downloadItem.totalBytes > 0) downloadItem.downloadedBytes.toFloat() / downloadItem.totalBytes.toFloat() else 0f
-                            val animatedProgress by animateFloatAsState(targetValue = progress, animationSpec = tween(300, easing = LinearEasing), label = "")
+                            val animatedProgress by animateFloatAsState(targetValue = progress, animationSpec = if (settings.batterySaverModeEnabled) snap() else tween(300, easing = LinearEasing), label = "")
                             val baseIconTint = if (downloadItem.status == "FAILED") dangerColor else if (isDownloading) accentColor else successColor
 
                             Row(
@@ -5543,8 +5623,10 @@ fun DownloadsPage(
             IconButton(onClick = { searchFocusRequester.requestFocus() }) {
                 Icon(Icons.Default.Search, contentDescription = "Search", tint = textMain, modifier = Modifier.size(26.dp))
             }
-            IconButton(onClick = { }) {
-                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = accentColor, modifier = Modifier.size(26.dp))
+            IconButton(onClick = { 
+                viewModel.openMenuDrawer()
+            }) {
+                Icon(Icons.Default.Menu, contentDescription = "Menu active", tint = textMain, modifier = Modifier.size(26.dp))
             }
         }
     }

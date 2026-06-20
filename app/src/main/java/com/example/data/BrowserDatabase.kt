@@ -66,7 +66,8 @@ data class BrowserSettings(
     val defaultCamera: PermissionState = PermissionState.ASK,
     val defaultMicrophone: PermissionState = PermissionState.ASK,
     val defaultNotifications: PermissionState = PermissionState.ASK,
-    val defaultPopups: PermissionState = PermissionState.BLOCK
+    val defaultPopups: PermissionState = PermissionState.BLOCK,
+    val batterySaverModeEnabled: Boolean = false
 )
 
 @Entity(tableName = "website_permissions")
@@ -174,7 +175,7 @@ interface BrowserDao {
         BrowserSettings::class,
         WebsitePermission::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class BrowserDatabase : RoomDatabase() {

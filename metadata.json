@@ -1,5 +1,5 @@
 {
-  "name": "search",
+  "name": "StormBrowser",
   "description": "Premium minimalist web browser featuring lightning-fast secure lookup integrated with Search (https://search.stormx.ninja/).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

@@ -152,6 +152,49 @@ class BrowserViewModel(
 
     val tabPreviews = androidx.compose.runtime.mutableStateMapOf<Int, android.graphics.Bitmap>()
 
+    private fun closeAllPages() {
+        showSettings.value = false
+        showBookmarks.value = false
+        showHistory.value = false
+        showDownloads.value = false
+        showShieldPanel.value = false
+    }
+
+    fun openBookmarks() {
+        closeAllPages()
+        showBookmarks.value = true
+    }
+
+    fun openHistory() {
+        closeAllPages()
+        showHistory.value = true
+    }
+
+    fun openDownloads() {
+        closeAllPages()
+        showDownloads.value = true
+    }
+
+    fun updateSettings(newSettings: BrowserSettings) {
+        viewModelScope.launch {
+            repository.saveSettings(newSettings)
+        }
+    }
+
+    fun openSettings() {
+        closeAllPages()
+        showSettings.value = true
+    }
+
+    fun openShield() {
+        closeAllPages()
+        showShieldPanel.value = true
+    }
+
+    fun openMenuDrawer() {
+        showMenuDrawer.value = true
+    }
+
     fun openTabsOverview() {
         val tabId = _activeTabId.value
         val webView = webViewMap[tabId]
@@ -1236,7 +1279,8 @@ class BrowserViewModel(
                             }
                             cursor?.close()
                             if (isRunning) {
-                                kotlinx.coroutines.delay(1000)
+                                val refreshRate = if (settings.value.batterySaverModeEnabled) 3000L else 1000L
+                                kotlinx.coroutines.delay(refreshRate)
                             }
                         }
                         
