@@ -3,7 +3,7 @@ package com.example.ui
 object BrowserTranslator {
     val TRANSLATIONS = mapOf(
         "简体中文" to mapOf(
-            "Search or Enter URL" to "搜索或输入网址",
+            "Search or URL" to "搜索或输入网址",
             "search" to "搜索",
             "Settings" to "设置",
             "General" to "常规",
@@ -165,7 +165,7 @@ object BrowserTranslator {
             "trackers" to "个跟踪器"
         ),
         "Español" to mapOf(
-            "Search or Enter URL" to "Buscar o ingresar URL",
+            "Search or URL" to "Buscar o ingresar URL",
             "search" to "búsqueda",
             "Settings" to "Ajustes",
             "General" to "General",
@@ -327,7 +327,7 @@ object BrowserTranslator {
             "trackers" to "rastreadores"
         ),
         "Deutsch" to mapOf(
-            "Search or Enter URL" to "Suchen oder URL eingeben",
+            "Search or URL" to "Suchen oder URL eingeben",
             "search" to "Suche",
             "Settings" to "Einstellungen",
             "General" to "Allgemein",
@@ -489,7 +489,7 @@ object BrowserTranslator {
             "trackers" to "Tracker"
         ),
         "Français" to mapOf(
-            "Search or Enter URL" to "Rechercher ou saisir une URL",
+            "Search or URL" to "Rechercher ou saisir une URL",
             "search" to "recherche",
             "Settings" to "Paramètres",
             "General" to "Général",

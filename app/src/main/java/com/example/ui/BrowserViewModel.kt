@@ -487,12 +487,17 @@ class BrowserViewModel(
 
     // Get or Create dynamic WebView for stable multi-tab navigation
     fun applyThemeToWebViews(isDark: Boolean) {
+        val color = if (isDark) android.graphics.Color.BLACK else android.graphics.Color.WHITE
         try {
+            for (webView in webViewMap.values) {
+                webView.setBackgroundColor(color)
+            }
             if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
                 for (webView in webViewMap.values) {
                     androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, isDark)
                 }
-            } else if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
+            }
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
                 for (webView in webViewMap.values) {
                     androidx.webkit.WebSettingsCompat.setForceDark(
                         webView.settings,
@@ -512,10 +517,13 @@ class BrowserViewModel(
                 "LIGHT" -> false
                 else -> isSystemDark
             }
+            val color = if (isDark) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+            it.setBackgroundColor(color)
             try {
                 if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
                     androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(it.settings, isDark)
-                } else if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
+                }
+                if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
                     androidx.webkit.WebSettingsCompat.setForceDark(
                         it.settings,
                         if (isDark) androidx.webkit.WebSettingsCompat.FORCE_DARK_ON else androidx.webkit.WebSettingsCompat.FORCE_DARK_OFF
@@ -1155,9 +1163,10 @@ class BrowserViewModel(
                         addRequestHeader("User-Agent", userAgent)
                         setDescription("Downloading from StormX Browser")
                         setTitle(fileName)
+                        setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
                         setAllowedOverMetered(true)
                         setAllowedOverRoaming(true)
-                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
                         setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
                     }
     
@@ -1203,30 +1212,40 @@ class BrowserViewModel(
                                     null
                                 } else if (timeDelta >= 0.5f) {
                                     val calc = ((bytesDownloaded - previousBytes) / timeDelta).toLong()
-                                    lastTime = currentTime
-                                    previousBytes = bytesDownloaded
-                                    if (calc < 0) 0L else calc
+                                    if (bytesDownloaded > previousBytes) {
+                                        lastTime = currentTime
+                                        previousBytes = bytesDownloaded
+                                        calc
+                                    } else if (timeDelta > 5.0f && status != DownloadManager.STATUS_PAUSED) {
+                                        lastTime = currentTime
+                                        0L
+                                    } else {
+                                        null
+                                    }
                                 } else {
                                     null
                                 }
     
-                                if (speed != null) {
-                                    val speedText = formatSpeed(speed)
+                                val activeSpeedText = if (speed != null) {
+                                    val text = formatSpeed(speed)
                                     val etaText = if (speed > 0 && totalBytes > 0 && totalBytes > bytesDownloaded) formatEta((totalBytes - bytesDownloaded) / speed) else ""
                                     withContext(Dispatchers.Main) {
-                                        downloadSpeeds[downloadId] = speedText
+                                        downloadSpeeds[downloadId] = text
                                         if (etaText.isNotEmpty()) {
                                             downloadEtas[downloadId] = etaText
                                         } else {
                                             downloadEtas.remove(downloadId)
                                         }
                                     }
+                                    text
+                                } else {
+                                    downloadSpeeds[downloadId]
                                 }
 
                                 // Update Android notification dynamically
                                 // Channel created outside the loop
                                 val progressPercent = if (totalBytes > 0) (bytesDownloaded * 100 / totalBytes).toInt() else 0
-                                val notifText = if (speed != null) "Downloading... ${formatSpeed(speed)}" else "Downloading..."
+                                val notifText = if (activeSpeedText != null && status == DownloadManager.STATUS_RUNNING) "Downloading... $activeSpeedText" else if (status == DownloadManager.STATUS_PAUSED) "Paused" else "Downloading..."
                                 
                                 val builder = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
                                     .setContentTitle(fileName)
@@ -1405,6 +1424,38 @@ class BrowserViewModel(
                     context.contentResolver.update(android.net.Uri.parse("content://downloads/my_downloads/$dmId"), values, null, null)
                     repository.updateDownload(dbItem.copy(status = "DOWNLOADING"))
                 }
+            } catch (e: Exception) {}
+        }
+    }
+
+    fun cancelDownload(id: Int, context: Context) {
+        viewModelScope.launch {
+            val dbItem = repository.downloadsFlow.first().find { it.id == id } ?: return@launch
+            try {
+                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                val cursor = dm.query(DownloadManager.Query())
+                var dmId: Long = -1
+                if (cursor != null) {
+                    while (cursor.moveToNext()) {
+                        val titleIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE)
+                        if (titleIndex != -1 && cursor.getString(titleIndex) == dbItem.fileName) {
+                            val idIndex = cursor.getColumnIndex(DownloadManager.COLUMN_ID)
+                            if (idIndex != -1) {
+                                dmId = cursor.getLong(idIndex)
+                                break
+                            }
+                        }
+                    }
+                    cursor.close()
+                }
+                if (dmId != -1L) {
+                    dm.remove(dmId)
+                }
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                notificationManager.cancel(id)
+                repository.deleteDownload(id)
+                downloadSpeeds.remove(id)
+                downloadEtas.remove(id)
             } catch (e: Exception) {}
         }
     }

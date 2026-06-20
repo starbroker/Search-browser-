@@ -1267,12 +1267,12 @@ fun BrowserHeader(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                Box(modifier = Modifier.weight(1f)) {
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                     if (urlInput.isEmpty()) {
                         Text(
-                            text = "Search or Enter URL",
+                            text = "Search or URL",
                             fontFamily = fontFamily,
-                            fontSize = (14f + density.fontOffset).sp,
+                            fontSize = (12f + density.fontOffset).sp,
                             color = if (isDark) Color.White.copy(alpha = 0.4f) else Color(0xFF6E6E73)
                         )
                     }
@@ -5411,32 +5411,21 @@ fun DownloadsPage(
             Spacer(modifier = Modifier.height(24.dp))
 
             // Lists with Smooth Transition
-            AnimatedContent(
-                targetState = filteredDownloads,
-                transitionSpec = {
-                    if (settings.batterySaverModeEnabled) {
-                        fadeIn(animationSpec = snap()) togetherWith fadeOut(animationSpec = snap())
-                    } else {
-                        fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
-                    }
-                },
-                label = "Download List Transition"
-            ) { items ->
-                if (items.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                        Text("No Downloads", color = textMuted, fontFamily = activeFont, fontSize = 15.sp)
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items.forEach { downloadItem ->
-                            var isMenuExpanded by remember { mutableStateOf(false) }
-                            val isCompleted = downloadItem.status == "COMPLETED"
-                            val isDownloading = downloadItem.status == "DOWNLOADING"
-                            val progress = if (downloadItem.totalBytes > 0) downloadItem.downloadedBytes.toFloat() / downloadItem.totalBytes.toFloat() else 0f
-                            val animatedProgress by animateFloatAsState(targetValue = progress, animationSpec = if (settings.batterySaverModeEnabled) snap() else tween(300, easing = LinearEasing), label = "")
-                            val baseIconTint = if (downloadItem.status == "FAILED") dangerColor else if (isDownloading) accentColor else successColor
+            if (filteredDownloads.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    Text("No Downloads", color = textMuted, fontFamily = activeFont, fontSize = 15.sp)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    filteredDownloads.forEach { downloadItem ->
+                        var isMenuExpanded by remember { mutableStateOf(false) }
+                        val isCompleted = downloadItem.status == "COMPLETED"
+                        val isDownloading = downloadItem.status == "DOWNLOADING"
+                        val progress = if (downloadItem.totalBytes > 0) downloadItem.downloadedBytes.toFloat() / downloadItem.totalBytes.toFloat() else 0f
+                        val animatedProgress by animateFloatAsState(targetValue = progress, animationSpec = if (settings.batterySaverModeEnabled) snap() else tween(300, easing = LinearEasing), label = "")
+                        val baseIconTint = if (downloadItem.status == "FAILED") dangerColor else if (isDownloading) accentColor else successColor
 
-                            Row(
+                        Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(itemBg, RoundedCornerShape(20.dp))
@@ -5484,60 +5473,60 @@ fun DownloadsPage(
                                         }
                                     }
                                 }
-                                Spacer(modifier = Modifier.width(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
 
-                                // Real Functionality: Select and Delete dropdown
-                                Box {
-                                    IconButton(onClick = { isMenuExpanded = true }) {
-                                        Icon(Icons.Default.MoreVert, contentDescription = "More", tint = textMain, modifier = Modifier.size(24.dp))
+                                if (downloadItem.status == "DOWNLOADING" || downloadItem.status == "PENDING" || downloadItem.status == "PAUSED") {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = { 
+                                            if (downloadItem.status == "PAUSED") viewModel.resumeDownload(downloadItem.id, context) 
+                                            else viewModel.pauseDownload(downloadItem.id, context) 
+                                        }) {
+                                            Icon(
+                                                if (downloadItem.status == "PAUSED") androidx.compose.material.icons.Icons.Default.PlayArrow else androidx.compose.material.icons.Icons.Default.Pause,
+                                                contentDescription = if (downloadItem.status == "PAUSED") "Play" else "Pause",
+                                                tint = textMain,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        IconButton(onClick = { viewModel.cancelDownload(downloadItem.id, context) }) {
+                                            Icon(androidx.compose.material.icons.Icons.Default.Close, contentDescription = "Cancel", tint = dangerColor, modifier = Modifier.size(24.dp))
+                                        }
                                     }
-                                    DropdownMenu(
-                                        expanded = isMenuExpanded,
-                                        onDismissRequest = { isMenuExpanded = false },
-                                        modifier = Modifier.background(glassBg)
-                                    ) {
-                                        if (downloadItem.status == "DOWNLOADING" || downloadItem.status == "PENDING") {
-                                            DropdownMenuItem(
-                                                text = { Text("Pause", color = textMain, fontFamily = activeFont) },
-                                                onClick = {
-                                                    isMenuExpanded = false
-                                                    viewModel.pauseDownload(downloadItem.id, context)
-                                                }
-                                            )
+                                } else {
+                                    Box {
+                                        IconButton(onClick = { isMenuExpanded = true }) {
+                                            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = textMain, modifier = Modifier.size(24.dp))
                                         }
-                                        if (downloadItem.status == "PAUSED") {
-                                            DropdownMenuItem(
-                                                text = { Text("Unpause", color = textMain, fontFamily = activeFont) },
-                                                onClick = {
-                                                    isMenuExpanded = false
-                                                    viewModel.resumeDownload(downloadItem.id, context)
-                                                }
-                                            )
-                                        }
-                                        if (downloadItem.status == "COMPLETED") {
-                                            DropdownMenuItem(
-                                                text = { Text("Share file", color = textMain, fontFamily = activeFont) },
-                                                onClick = {
-                                                    isMenuExpanded = false
-                                                    shareDownloadedFile(context, downloadItem.filePath, downloadItem.mimeType, viewModel.settings.value.language)
-                                                }
-                                            )
-                                        }
-                                        DropdownMenuItem(
-                                            text = { Text("Delete file", color = dangerColor, fontFamily = activeFont) },
-                                            onClick = {
-                                                isMenuExpanded = false
-                                                itemToDelete = downloadItem
-                                                deleteFromStorage = false
+                                        DropdownMenu(
+                                            expanded = isMenuExpanded,
+                                            onDismissRequest = { isMenuExpanded = false },
+                                            modifier = Modifier.background(glassBg)
+                                        ) {
+                                            if (downloadItem.status == "COMPLETED") {
+                                                DropdownMenuItem(
+                                                    text = { Text("Share file", color = textMain, fontFamily = activeFont) },
+                                                    onClick = {
+                                                        isMenuExpanded = false
+                                                        shareDownloadedFile(context, downloadItem.filePath, downloadItem.mimeType, viewModel.settings.value.language)
+                                                    }
+                                                )
                                             }
-                                        )
+                                            DropdownMenuItem(
+                                                text = { Text("Delete file", color = dangerColor, fontFamily = activeFont) },
+                                                onClick = {
+                                                    isMenuExpanded = false
+                                                    itemToDelete = downloadItem
+                                                    deleteFromStorage = false
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
+            // Removed trailing AnimatedContent brace
         }
 
         // Top Bar Gap + Search Bar
@@ -6654,17 +6643,13 @@ fun ColorOSSearchSuggestionsOverlay(
         )
     }
 
-    ElevatedCard(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = glassCardColor(isDark)
-        ),
-        elevation = CardDefaults.elevatedCardElevation(
-            defaultElevation = 8.dp
-        )
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(glassCardColor(isDark))
+            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(24.dp))
     ) {
         Column(
             modifier = Modifier.padding(vertical = 8.dp)
