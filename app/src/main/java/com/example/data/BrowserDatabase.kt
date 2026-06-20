@@ -76,6 +76,7 @@ data class WebsitePermission(
     val location: PermissionState = PermissionState.ASK,
     val camera: PermissionState = PermissionState.ASK,
     val microphone: PermissionState = PermissionState.ASK,
+    val files: PermissionState = PermissionState.ASK,
     val popups: PermissionState = PermissionState.ASK,
     val timestamp: Long = System.currentTimeMillis()
 )
@@ -173,7 +174,7 @@ interface BrowserDao {
         BrowserSettings::class,
         WebsitePermission::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class BrowserDatabase : RoomDatabase() {

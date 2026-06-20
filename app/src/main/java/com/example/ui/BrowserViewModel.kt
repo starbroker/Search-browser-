@@ -35,7 +35,8 @@ data class TabState(
     val isLoading: Boolean = false,
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
-    val faviconUrl: String? = null
+    val faviconUrl: String? = null,
+    val isReadingMode: Boolean = false
 )
 
 class BrowserViewModel(
@@ -292,6 +293,20 @@ class BrowserViewModel(
         }
     }
 
+    fun toggleWebsiteFiles(domain: String, allowed: Boolean) {
+        viewModelScope.launch {
+            val existing = websitePermissions.value.find { it.domain == domain } ?: WebsitePermission(domain = domain)
+            val updated = existing.copy(files = if (allowed) PermissionState.ALLOW else PermissionState.BLOCK)
+            repository.saveWebsitePermission(updated)
+            showIosNotification(
+                title = if (allowed) "Files Access Allowed" else "Files Access Restricted",
+                message = if (allowed) "Allowing files access on $domain" else "Restricting files access on $domain",
+                type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
+                subtext = domain
+            )
+        }
+    }
+
     fun removeWebsitePermission(domain: String) {
         viewModelScope.launch {
             repository.removeWebsitePermission(domain)
@@ -491,6 +506,7 @@ class BrowserViewModel(
                 databaseEnabled = true
                 useWideViewPort = true
                 loadWithOverviewMode = true
+                mediaPlaybackRequiresUserGesture = false
                 builtInZoomControls = true
                 displayZoomControls = false
                 mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
@@ -577,7 +593,7 @@ class BrowserViewModel(
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                     url?.let {
-                        updateTabProperties(tabId, url = it, isLoading = true)
+                        updateTabProperties(tabId, url = it, isLoading = true, isReadingMode = false)
                         if (tabId == _activeTabId.value) {
                             _currentUrlInput.value = it
                         }
@@ -650,17 +666,21 @@ class BrowserViewModel(
                     val micAllowed = perm?.microphone == com.example.data.PermissionState.ALLOW
                     val micBlocked = perm?.microphone == com.example.data.PermissionState.BLOCK
                     
+                    val context = getApplication<Application>()
+                    val hasCameraOsPerm = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    val hasMicOsPerm = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
                     val autoGrantedResources = mutableListOf<String>()
                     val resourcesNeeded = mutableListOf<String>()
                     for (res in request.resources) {
                         if (res == android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE) {
-                            if (cameraAllowed) {
+                            if (cameraAllowed && hasCameraOsPerm) {
                                 autoGrantedResources.add(res)
                             } else if (!cameraBlocked) {
                                 resourcesNeeded.add(res)
                             }
                         } else if (res == android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE) {
-                            if (micAllowed) {
+                            if (micAllowed && hasMicOsPerm) {
                                 autoGrantedResources.add(res)
                             } else if (!micBlocked) {
                                 resourcesNeeded.add(res)
@@ -692,7 +712,11 @@ class BrowserViewModel(
                     val domain = getDomainFromUrl(origin)
                     val permState = websitePermissions.value.find { it.domain == domain }?.location
                     
-                    if (permState == com.example.data.PermissionState.ALLOW) {
+                    val context = getApplication<Application>()
+                    val hasLocationOsPerm = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+                            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    
+                    if (permState == com.example.data.PermissionState.ALLOW && hasLocationOsPerm) {
                         callback.invoke(origin, true, true)
                     } else if (permState == com.example.data.PermissionState.BLOCK) {
                         callback.invoke(origin, false, true)
@@ -818,7 +842,8 @@ class BrowserViewModel(
         progress: Int? = null,
         isLoading: Boolean? = null,
         canGoBack: Boolean? = null,
-        canGoForward: Boolean? = null
+        canGoForward: Boolean? = null,
+        isReadingMode: Boolean? = null
     ) {
         _tabs.value = _tabs.value.map { tab ->
             if (tab.id == tabId) {
@@ -828,7 +853,8 @@ class BrowserViewModel(
                     progress = progress ?: tab.progress,
                     isLoading = isLoading ?: tab.isLoading,
                     canGoBack = canGoBack ?: tab.canGoBack,
-                    canGoForward = canGoForward ?: tab.canGoForward
+                    canGoForward = canGoForward ?: tab.canGoForward,
+                    isReadingMode = isReadingMode ?: tab.isReadingMode
                 )
             } else {
                 tab
@@ -852,7 +878,7 @@ class BrowserViewModel(
                     "Bing" -> "https://www.bing.com/search?q=${Uri.encode(formattedUrl)}"
                     "Yahoo" -> "https://search.yahoo.com/search?p=${Uri.encode(formattedUrl)}"
                     "DuckDuckGo" -> "https://duckduckgo.com/?q=${Uri.encode(formattedUrl)}"
-                    else -> "https://search.stormx.ninja/search?q=${Uri.encode(formattedUrl)}"
+                    else -> "https://search.stormx.ninja/results?q=${Uri.encode(formattedUrl)}"
                 }
             }
         }
@@ -1365,6 +1391,81 @@ class BrowserViewModel(
         appRedirectProposal.value = null
         val webView = webViewMap[tabId]
         webView?.loadUrl(url)
+    }
+
+    fun toggleReadingMode() {
+        val activeId = _activeTabId.value
+        val webView = webViewMap[activeId] ?: return
+        val tabState = _tabs.value.find { it.id == activeId } ?: return
+        
+        if (tabState.isReadingMode) {
+            webView.reload()
+            updateTabProperties(activeId, isReadingMode = false)
+            return
+        }
+        
+        val readingModeJS = """
+            (function() {
+                var contentNode = document.querySelector('article') || document.querySelector('main') || document.body;
+                
+                var extractedHtml = '';
+                var seen = new Set();
+                var elements = contentNode.querySelectorAll('h1, h2, h3, h4, p, img, picture, ul, ol, blockquote');
+                
+                elements.forEach(function(el) {
+                    if (seen.has(el)) return;
+                    
+                    if (el.closest('nav, header, footer, aside, .sidebar, .menu, [class*="nav"], [class*="menu"], [class*="ad-"], [class*="cookie"]')) return;
+                    
+                    var cleanEl = el.cloneNode(true);
+                    
+                    var cleanNodeStyles = function(node) {
+                        if(node.removeAttribute) {
+                            node.removeAttribute('style');
+                            node.removeAttribute('class');
+                            node.removeAttribute('id');
+                        }
+                        if(node.childNodes) {
+                            node.childNodes.forEach(cleanNodeStyles);
+                        }
+                    };
+                    cleanNodeStyles(cleanEl);
+                    
+                    el.querySelectorAll('h1, h2, h3, h4, p, img, picture, ul, ol, blockquote').forEach(function(child) {
+                        seen.add(child);
+                    });
+                    
+                    extractedHtml += cleanEl.outerHTML + '\n';
+                });
+
+                var style = '<style>' +
+                    ':root { --bg-color: #F8F9FA; --text-color: #1A1A1A; --card-bg: #FFFFFF; --accent-color: #0A59F7; --text-secondary: #666666; --radius: 32px; }' +
+                    '@media (prefers-color-scheme: dark) { :root { --bg-color: #000000; --text-color: #F2F2F2; --card-bg: #121212; --accent-color: #4A8CFF; --text-secondary: #999999; } }' +
+                    'body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 19px; line-height: 1.7; max-width: 900px; margin: 0 auto; padding: 16px 12px; background: var(--bg-color); color: var(--text-color); overflow-x: hidden; -webkit-font-smoothing: antialiased; }' +
+                    '.coloros-card { background: var(--card-bg); border-radius: var(--radius); padding: 5% 6%; box-shadow: 0 12px 32px rgba(0,0,0,0.04); margin-top: 8px; margin-bottom: 24px; transition: background 0.3s ease; }' +
+                    '@media (prefers-color-scheme: dark) { .coloros-card { box-shadow: none; border: 1px solid rgba(255,255,255,0.06); } }' +
+                    'img, picture { max-width: 100%; height: auto; display: block; margin: 32px auto; border-radius: 20px; }' +
+                    'a { color: var(--accent-color); text-decoration: none; font-weight: 500; }' +
+                    'h1 { font-size: 2.3em; line-height: 1.25; margin: 0 0 24px 0; font-weight: 800; letter-spacing: -0.04em; }' +
+                    'h2 { font-size: 1.6em; line-height: 1.3; margin: 2em 0 1em 0; font-weight: 700; letter-spacing: -0.03em; }' +
+                    'h3 { font-size: 1.3em; margin: 1.5em 0 0.8em 0; font-weight: 700; letter-spacing: -0.02em; }' +
+                    'p { margin-bottom: 1.6em; color: var(--text-color); letter-spacing: -0.01em; }' +
+                    'blockquote { border-left: 4px solid var(--accent-color); padding-left: 20px; margin-left: 0; font-style: italic; color: var(--text-secondary); border-radius: 0 8px 8px 0; background: var(--bg-color); padding: 16px 20px; }' +
+                    'ul, ol { margin-bottom: 1.6em; padding-left: 24px; }' +
+                    'li { margin-bottom: 0.6em; }' +
+                    '</style>';
+                    
+                var titleText = document.title;
+                var titleHtml = document.querySelector('h1') ? '' : '<h1>' + titleText + '</h1>';
+                
+                document.head.innerHTML = '<meta name="viewport" content="width=device-width, initial-scale=1">' + style;
+                document.body.innerHTML = '<div class="coloros-card">' + titleHtml + extractedHtml + '</div>';
+                document.body.dataset.readingMode = 'true';
+            })();
+        """.trimIndent()
+        
+        webView.evaluateJavascript(readingModeJS, null)
+        updateTabProperties(activeId, isReadingMode = true)
     }
 
     override fun onCleared() {

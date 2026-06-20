@@ -1277,6 +1277,19 @@ fun BrowserHeader(
 
             Spacer(modifier = Modifier.width(6.dp))
 
+            // Reading mode action icon button
+            IconButton(
+                onClick = { viewModel.toggleReadingMode() },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Article,
+                    contentDescription = "Reading Mode",
+                    tint = if (activeTab?.isReadingMode == true) Color(0xFF0A59F7) else if (isDark) Color.White else Color(0xFF1C1C1E),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
             // Refresh action icon button
             IconButton(
                 onClick = onRefresh,
@@ -2321,6 +2334,56 @@ fun ShieldDashboardSheet(
                         onCheckedChange = { 
                             if (activePerm.microphone != com.example.data.PermissionState.ALLOW) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                             else viewModel.toggleWebsiteMicrophone(currentDomain, false)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
+                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
+                        .clickable { 
+                            viewModel.toggleWebsiteFiles(currentDomain, activePerm.files != com.example.data.PermissionState.ALLOW)
+                        }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = "Website Files",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Allow Files Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            text = if (activePerm.files == com.example.data.PermissionState.ALLOW) "Files permission active" else "Allow site to access files",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Switch(
+                        checked = activePerm.files == com.example.data.PermissionState.ALLOW,
+                        onCheckedChange = { 
+                            viewModel.toggleWebsiteFiles(currentDomain, activePerm.files != com.example.data.PermissionState.ALLOW)
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
@@ -6810,6 +6873,7 @@ fun SitePermissionsSubPage(
                                         if (perm.location != com.example.data.PermissionState.ASK) PermChip("Location", perm.location.name, isDark)
                                         if (perm.camera != com.example.data.PermissionState.ASK) PermChip("Camera", perm.camera.name, isDark)
                                         if (perm.microphone != com.example.data.PermissionState.ASK) PermChip("Mic", perm.microphone.name, isDark)
+                                        if (perm.files != com.example.data.PermissionState.ASK) PermChip("Files", perm.files.name, isDark)
                                     }
                                 }
                             }
