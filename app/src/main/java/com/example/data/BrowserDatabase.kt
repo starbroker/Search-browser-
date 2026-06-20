@@ -41,6 +41,10 @@ data class DownloadItem(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+enum class PermissionState {
+    ASK, BLOCK, ALLOW
+}
+
 @Entity(tableName = "browser_settings")
 data class BrowserSettings(
     @PrimaryKey val id: Int = 1,
@@ -56,15 +60,23 @@ data class BrowserSettings(
     val searchEngine: String = "search.stormx.ninja", // search.stormx.ninja, Google, Bing, Yahoo, DuckDuckGo
     val language: String = "English (US)", // English (US), 简体中文, Español, Deutsch, Français
     val fluidAnimationsEnabled: Boolean = true,
-    val speedDialLayout: String = "4x2 Grid" // 4x2 Grid, 3x3 Grid, 5x2 Grid
+    val speedDialLayout: String = "4x2 Grid", // 4x2 Grid, 3x3 Grid, 5x2 Grid
+    // Global defaults for permissions
+    val defaultLocation: PermissionState = PermissionState.ASK,
+    val defaultCamera: PermissionState = PermissionState.ASK,
+    val defaultMicrophone: PermissionState = PermissionState.ASK,
+    val defaultNotifications: PermissionState = PermissionState.ASK,
+    val defaultPopups: PermissionState = PermissionState.BLOCK
 )
 
-@Entity(tableName = "site_permissions")
-data class SitePermission(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val origin: String,
-    val permissionType: String,
-    val isGranted: Boolean,
+@Entity(tableName = "website_permissions")
+data class WebsitePermission(
+    @PrimaryKey val domain: String,
+    val notifications: PermissionState = PermissionState.ASK,
+    val location: PermissionState = PermissionState.ASK,
+    val camera: PermissionState = PermissionState.ASK,
+    val microphone: PermissionState = PermissionState.ASK,
+    val popups: PermissionState = PermissionState.ASK,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -139,26 +151,17 @@ interface BrowserDao {
     suspend fun insertOrUpdateSettings(settings: BrowserSettings)
 
     // Website permissions
-    @Query("SELECT * FROM site_permissions ORDER BY origin ASC")
-    fun getAllSitePermissionsFlow(): Flow<List<SitePermission>>
-
-    @Query("SELECT * FROM site_permissions WHERE origin = :origin AND permissionType = :type LIMIT 1")
-    suspend fun getSitePermission(origin: String, type: String): SitePermission?
+    @Query("SELECT * FROM website_permissions ORDER BY timestamp DESC")
+    fun getAllWebsitePermissionsFlow(): Flow<List<WebsitePermission>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSitePermission(permission: SitePermission)
+    suspend fun insertWebsitePermission(permission: WebsitePermission)
 
-    @Update
-    suspend fun updateSitePermission(permission: SitePermission)
+    @Query("DELETE FROM website_permissions WHERE domain = :domain")
+    suspend fun deleteWebsitePermission(domain: String)
 
-    @Query("DELETE FROM site_permissions WHERE id = :id")
-    suspend fun deleteSitePermission(id: Int)
-
-    @Query("DELETE FROM site_permissions WHERE origin = :origin")
-    suspend fun deleteSitePermissionsByOrigin(origin: String)
-
-    @Query("DELETE FROM site_permissions")
-    suspend fun deleteAllSitePermissions()
+    @Query("DELETE FROM website_permissions")
+    suspend fun deleteAllWebsitePermissions()
 }
 
 @Database(
@@ -168,7 +171,7 @@ interface BrowserDao {
         HistoryItem::class, 
         DownloadItem::class, 
         BrowserSettings::class,
-        SitePermission::class
+        WebsitePermission::class
     ],
     version = 5,
     exportSchema = false
@@ -187,7 +190,7 @@ abstract class BrowserDatabase : RoomDatabase() {
                     BrowserDatabase::class.java,
                     "stormx_browser_db"
                 )
-                .fallbackToDestructiveMigration(true)
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance
                 instance

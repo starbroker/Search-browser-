@@ -1,11 +1,6 @@
 @file:Suppress("DEPRECATION")
 package com.example.ui
 
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
-import dev.chrisbanes.haze.HazeStyle
-
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -72,57 +67,24 @@ import com.example.data.BrowserSettings
 import com.example.data.DownloadItem
 import com.example.data.HistoryItem
 import kotlinx.coroutines.launch
+import android.content.ContextWrapper
+import androidx.activity.ComponentActivity
+import android.content.Intent
+import android.provider.Settings
+import android.net.Uri
+
+fun android.content.Context.findActivity(): ComponentActivity? {
+    var currentContext = this
+    while (currentContext is ContextWrapper) {
+        if (currentContext is ComponentActivity) {
+            return currentContext
+        }
+        currentContext = currentContext.baseContext
+    }
+    return null
+}
 
 val LocalAppLanguage = androidx.compose.runtime.staticCompositionLocalOf { "English (US)" }
-
-@Composable
-fun GlassyDialog(
-    hazeState: dev.chrisbanes.haze.HazeState,
-    title: @Composable () -> Unit,
-    text: @Composable () -> Unit,
-    icon: (@Composable () -> Unit)? = null,
-    confirmButton: @Composable () -> Unit,
-    dismissButton: @Composable () -> Unit,
-    onDismissRequest: () -> Unit
-) {
-    val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
-    val bgColor = if (isSystemDark) Color(0xFF1E1E24).copy(alpha = 0.65f) else Color(0xFFFFFFFF).copy(alpha = 0.7f)
-    val borderColor = if (isSystemDark) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.6f)
-    
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.4f))
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismissRequest),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .widthIn(max = 340.dp)
-                .padding(24.dp)
-                .background(bgColor, RoundedCornerShape(28.dp))
-                .border(1.5.dp, borderColor, RoundedCornerShape(28.dp))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}) // absorb clicks
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            if (icon != null) {
-                Box(modifier = Modifier.padding(bottom = 16.dp)) { icon() }
-            }
-            Box(modifier = Modifier.padding(bottom = 16.dp)) { title() }
-            Box(modifier = Modifier.padding(bottom = 24.dp)) { text() }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                dismissButton()
-                Spacer(modifier = Modifier.width(8.dp))
-                confirmButton()
-            }
-        }
-    }
-}
 
 @Composable
 fun trans(text: String): String {
@@ -247,22 +209,42 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val showMenuDrawer by viewModel.showMenuDrawer.collectAsState()
     val imageDownloadProposal by viewModel.imageDownloadProposal.collectAsState()
     val permissionProposal by viewModel.permissionRequestProposal.collectAsState()
-    val updateProposal by viewModel.updateProposal.collectAsState()
     
-    val showWelcomeScreen by viewModel.showWelcomeScreen.collectAsState()
+    var showOsSettingsRedirect by remember { mutableStateOf(false) }
+    var osPermissionCheckTrigger by remember { mutableStateOf(0) }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                osPermissionCheckTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     val multiplePermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val allGranted = permissions.values.all { it }
-        viewModel.handlePermissionProposal(allGranted, true)
         if (!allGranted) {
-            android.widget.Toast.makeText(context, "OS Permissions Denied", android.widget.Toast.LENGTH_SHORT).show()
+            val activity = context.findActivity()
+            val permanentlyDenied = permissions.keys.any { activity?.shouldShowRequestPermissionRationale(it) == false }
+            if (permanentlyDenied) {
+                showOsSettingsRedirect = true
+                viewModel.handlePermissionProposal(false)
+            } else {
+                viewModel.handlePermissionProposal(false)
+            }
+        } else {
+            osPermissionCheckTrigger++
         }
     }
     
     val isAnyDrawerOpen = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showShield || showMenuDrawer
-    val hazeState = remember { dev.chrisbanes.haze.HazeState() }
 
     var isSearchFocused by remember { mutableStateOf(false) }
 
@@ -340,23 +322,8 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     androidx.activity.compose.BackHandler(enabled = showMenuDrawer) { viewModel.showMenuDrawer.value = false }
     androidx.activity.compose.BackHandler(enabled = showShield) { viewModel.showShieldPanel.value = false }
     
-    val handledByOverlays = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showMenuDrawer || showShield
-    val canGoBackInWebView = activeTab?.canGoBack == true
-    val isNotHomepage = !isHomepageUrl(activeTab?.url, settings)
-    val hasMultipleTabs = tabsList.size > 1
-
-    androidx.activity.compose.BackHandler(enabled = !handledByOverlays && (canGoBackInWebView || isNotHomepage || hasMultipleTabs)) {
-        if (canGoBackInWebView) {
-            viewModel.activeTabGoBack(context)
-        } else if (hasMultipleTabs) {
-            val activeId = activeTab?.id
-            if (activeId != null) {
-                viewModel.removeTab(activeId)
-            }
-        } else {
-            viewModel.navigateActiveTab(settings.homeUrl, context)
-            viewModel.activeTabClearHistory()
-        }
+    androidx.activity.compose.BackHandler(enabled = activeTab?.canGoBack == true && !showTabs && !showSettings && !showBookmarks && !showHistory && !showDownloads && !showMenuDrawer && !showShield) {
+        viewModel.activeTabGoBack(context)
     }
 
     CompositionLocalProvider(LocalAppLanguage provides settings.language) {
@@ -372,7 +339,12 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 // Determine layout direction for navigation bar
                 val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
-                Box(modifier = Modifier.fillMaxSize().haze(state = hazeState)) {
+                val blurRadius by androidx.compose.animation.core.animateDpAsState(
+                    targetValue = if (isAnyDrawerOpen) 32.dp else 0.dp,
+                    animationSpec = androidx.compose.animation.core.tween(300),
+                    label = "baseBlur"
+                )
+                Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
                     if (isTablet) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         AnimatedVisibility(
@@ -387,8 +359,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 tabsCount = tabsList.size,
                                 density = currentDensity,
                                 scope = scope,
-                                activeFont = activeFont,
-                                hazeState = hazeState
+                                activeFont = activeFont
                             )
                         }
                         Column(
@@ -410,8 +381,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 onUrlChange = { viewModel.setUrlInput(it) },
                                 onNavigate = { viewModel.navigateActiveTab(currentUrlInput, context); focusManager.clearFocus() },
                                 onRefresh = { viewModel.activeTabRefresh(context) },
-                                viewModel = viewModel,
-                                hazeState = hazeState
+                                viewModel = viewModel
                             )
 
                             // ColorOS 16 Dropdown
@@ -517,8 +487,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             onUrlChange = { viewModel.setUrlInput(it) },
                             onNavigate = { viewModel.navigateActiveTab(currentUrlInput, context); focusManager.clearFocus() },
                             onRefresh = { viewModel.activeTabRefresh(context) },
-                            viewModel = viewModel,
-                            hazeState = hazeState
+                            viewModel = viewModel
                         )
 
                         // ColorOS 16 Dropdown
@@ -615,8 +584,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 tabsCount = tabsList.size,
                                 density = currentDensity,
                                 scope = scope,
-                                activeFont = activeFont,
-                                hazeState = hazeState
+                                activeFont = activeFont
                             )
                         }
                     }
@@ -713,16 +681,6 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     activeFont = activeFont,
                     sessionAds = adsBlockedSession,
                     sessionTrackers = trackersBlockedSession
-                )
-            }
-
-            if (showWelcomeScreen) {
-                com.example.ui.onboarding.WelcomeScreenSheet(
-                    hazeState = hazeState,
-                    onSetupCompleted = {
-                        viewModel.showWelcomeScreen.value = false
-                        com.example.util.PreferenceHelper.isFirstLaunch = false
-                    }
                 )
             }
 
@@ -850,7 +808,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                                             context = context
                                                         )
                                                     } catch (e: Exception) {
-                                                        android.widget.Toast.makeText(context, "Download failed", android.widget.Toast.LENGTH_SHORT).show()
+                                                        android.widget.Toast.makeText(context, BrowserTranslator.translateText("Download failed", viewModel.settings.value.language), android.widget.Toast.LENGTH_SHORT).show()
                                                     }
                                                     viewModel.imageDownloadProposal.value = null
                                                 },
@@ -875,8 +833,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             // High-fidelity social redirects handler dialogue
             val appRedirectProposal by viewModel.appRedirectProposal.collectAsState()
             appRedirectProposal?.let { proposal ->
-                GlassyDialog(
-                    hazeState = hazeState,
+                AlertDialog(
                     onDismissRequest = {
                         viewModel.proceedWithBrowser(proposal.url, proposal.tabId)
                     },
@@ -891,7 +848,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                     viewModel.appRedirectProposal.value = null
                                 } catch (e: Exception) {
                                     viewModel.proceedWithBrowser(proposal.url, proposal.tabId)
-                                    android.widget.Toast.makeText(context, "App not installed, loading in browser", android.widget.Toast.LENGTH_SHORT).show()
+                                    android.widget.Toast.makeText(context, BrowserTranslator.translateText("App not installed, loading in browser", viewModel.settings.value.language), android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(
@@ -936,7 +893,64 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
+                    },
+                    shape = RoundedCornerShape(24.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 6.dp
+                )
+            }
+
+            if (showOsSettingsRedirect) {
+                AlertDialog(
+                    onDismissRequest = { showOsSettingsRedirect = false },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showOsSettingsRedirect = false
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", context.packageName, null)
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                context.startActivity(intent)
+                            },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Open Settings", fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showOsSettingsRedirect = false }) {
+                            Text("Cancel", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    },
+                    title = {
+                        Text(
+                            text = "Allow permission in Settings",
+                            fontFamily = activeFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = "This site needs Android permissions that have been permanently denied. Please enable them in OS settings to proceed.",
+                            fontFamily = activeFont,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    shape = RoundedCornerShape(24.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 6.dp
                 )
             }
 
@@ -944,136 +958,188 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 val involvesCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
                 val involvesMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
                 val involvesLocation = proposal.geoCallback != null
+                
+                val permissionsToRequest = mutableListOf<String>()
+                if (involvesCamera) permissionsToRequest.add(android.Manifest.permission.CAMERA)
+                if (involvesMic) permissionsToRequest.add(android.Manifest.permission.RECORD_AUDIO)
+                if (involvesLocation) {
+                    permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    permissionsToRequest.add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                }
 
-                GlassyDialog(
-                    hazeState = hazeState,
-                    onDismissRequest = { 
-                        viewModel.handlePermissionProposal(false, true)
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                val permissionsToRequest = mutableListOf<String>()
-                                if (involvesCamera) permissionsToRequest.add(android.Manifest.permission.CAMERA)
-                                if (involvesMic) permissionsToRequest.add(android.Manifest.permission.RECORD_AUDIO)
-                                if (involvesLocation) permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                                
-                                if (permissionsToRequest.isNotEmpty()) {
-                                    multiplePermissionLauncher.launch(permissionsToRequest.toTypedArray())
-                                } else {
-                                    viewModel.handlePermissionProposal(true, true)
+                var osPermissionsGranted by remember(osPermissionCheckTrigger, permissionsToRequest) { 
+                    mutableStateOf(permissionsToRequest.all { 
+                        androidx.core.content.ContextCompat.checkSelfPermission(context, it) == android.content.pm.PackageManager.PERMISSION_GRANTED 
+                    }) 
+                }
+
+                // If OS permissions are not granted, show interstitial
+                if (!osPermissionsGranted && permissionsToRequest.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.4f))
+                            .clickable(enabled = false) {},
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(0.85f),
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 6.dp
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(36.dp).padding(bottom = 16.dp)
+                                )
+                                Text(
+                                    text = "Search needs access first",
+                                    fontFamily = activeFont,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "To allow this site to use your device features, you must first grant Search the necessary Android permissions.",
+                                    fontFamily = activeFont,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    TextButton(onClick = { viewModel.handlePermissionProposal(false) }) {
+                                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Button(
+                                        onClick = { multiplePermissionLauncher.launch(permissionsToRequest.toTypedArray()) },
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Continue")
+                                    }
                                 }
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Allow", fontFamily = activeFont, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { 
-                            viewModel.handlePermissionProposal(false, true)
-                        }) {
-                            Text("Deny", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    },
-                    icon = {
-                        Icon(
-                            imageVector = if (involvesCamera && involvesMic) Icons.Default.Videocam else if (involvesCamera) Icons.Default.Videocam else if (involvesMic) Icons.Default.Mic else Icons.Default.LocationOn,
-                            contentDescription = "Permission Request",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    },
-                    title = {
-                        val requestedResourceText = if (involvesCamera && involvesMic) "Camera & Microphone" else if (involvesCamera) "Camera" else if (involvesMic) "Microphone" else if (involvesLocation) "Location" else "Unknown Resource"
-                        Text(
-                            text = "Allow $requestedResourceText?",
-                            fontFamily = activeFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center
-                        )
-                    },
-                    text = {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "${proposal.domain} wants to use your device's features.",
-                                fontFamily = activeFont,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
+                            }
                         }
                     }
-                )
-            }
-
-            updateProposal?.let { update ->
-                GlassyDialog(
-                    hazeState = hazeState,
-                    onDismissRequest = { viewModel.updateProposal.value = null },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(update.downloadUrl))
-                                context.startActivity(intent)
-                                viewModel.updateProposal.value = null
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            shape = RoundedCornerShape(12.dp)
+                } else {
+                    // OS permission is granted, show glass sheet!
+                    val backgroundColor = if (isDark) Color(0x33FFFFFF) else Color(0x26000000)
+                    val iconColor = if (isDark) Color.White else Color.Black
+                    val borderColor = if (isDark) Color(0x4DFFFFFF) else Color(0x33000000)
+                    
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.2f))
+                            .clickable { viewModel.handlePermissionProposal(false) }, // dismiss out of bounds blocks
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = false) {}, // catch clicks inside sheet
+                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                            color = Color.Transparent
                         ) {
-                            Text("Update", fontFamily = activeFont, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { viewModel.updateProposal.value = null }) {
-                            Text("Later", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Update,
-                            contentDescription = "App Update",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    },
-                    title = {
-                        Text(
-                            text = "Update Available",
-                            fontFamily = activeFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center
-                        )
-                    },
-                    text = {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "A new version of Aether (v${update.newVersion}) is available on GitHub.",
-                                fontFamily = activeFont,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .background(glassCardColor(isDark))
+                                    .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                                    .padding(24.dp)
+                                    .navigationBarsPadding()
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                    // 1. Site favicon & domain
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .background(backgroundColor, RoundedCornerShape(8.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(16.dp), tint = iconColor)
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${proposal.domain} wants to",
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 15.sp,
+                                            color = iconColor
+                                        )
+                                    }
+                                    
+                                    // 2. Permission icon & label
+                                    val icon = if (involvesCamera) Icons.Default.CameraAlt else if (involvesMic) Icons.Default.Mic else Icons.Default.LocationOn
+                                    val label = if (involvesCamera) "Use your camera" else if (involvesMic) "Use your microphone" else "Know your location"
+                                    val subtext = if (involvesCamera) "This can be used to take photos or record video" else if (involvesMic) "This can be used to record audio" else "This can be used to show your position on the map"
+                                    
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(icon, contentDescription = null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Text(
+                                            text = label,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 22.sp,
+                                            color = iconColor
+                                        )
+                                    }
+                                    
+                                    // 3. Subtext
+                                    Text(
+                                        text = subtext,
+                                        fontSize = 13.sp,
+                                        color = iconColor.copy(alpha = 0.7f)
+                                    )
+                                    
+                                    // 4. Buttons
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        // Block
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(48.dp)
+                                                .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .clickable { viewModel.handlePermissionProposal(false) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("Block", color = iconColor, fontWeight = FontWeight.SemiBold)
+                                        }
+                                        
+                                        // Allow
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(48.dp)
+                                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .clickable { viewModel.handlePermissionProposal(true) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("Allow", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                    
+                                    // 5. Allow Scope Link
+                                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "Allow once · This visit · Always",
+                                            fontSize = 12.sp,
+                                            color = iconColor.copy(alpha = 0.5f)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
-                )
+                }
             }
         }
     }
@@ -1093,8 +1159,7 @@ fun BrowserHeader(
     onUrlChange: (String) -> Unit,
     onNavigate: () -> Unit,
     onRefresh: () -> Unit,
-    viewModel: BrowserViewModel,
-    hazeState: dev.chrisbanes.haze.HazeState
+    viewModel: BrowserViewModel
 ) {
     val isDark = when (settings.themeMode) {
         "LIGHT" -> false
@@ -1105,7 +1170,7 @@ fun BrowserHeader(
     Surface(
         color = glassCardColor(isDark),
         tonalElevation = 6.dp,
-        shadowElevation = 8.dp,
+        shadowElevation = 0.dp,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 4.dp)
@@ -1133,7 +1198,7 @@ fun BrowserHeader(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = if (settings.adBlockEnabled) Icons.Outlined.Shield else Icons.Outlined.Warning,
+                        imageVector = if (settings.adBlockEnabled) Icons.Default.Shield else Icons.Default.ShieldMoon,
                         contentDescription = "Anti-tracker config",
                         tint = Color(0xFF0066FF),
                         modifier = Modifier.size(20.dp)
@@ -1262,8 +1327,7 @@ fun PersistentNavigationBar(
     tabsCount: Int,
     density: LayoutDensity,
     scope: kotlinx.coroutines.CoroutineScope,
-    activeFont: FontFamily,
-    hazeState: dev.chrisbanes.haze.HazeState
+    activeFont: FontFamily
 ) {
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsState()
@@ -1278,7 +1342,7 @@ fun PersistentNavigationBar(
     Surface(
         color = glassCardColor(isDark),
         tonalElevation = 6.dp,
-        shadowElevation = 8.dp,
+        shadowElevation = 0.dp,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .padding(
@@ -1550,7 +1614,7 @@ fun MenuDrawerSheet(
                         activeFont = activeFont,
                         isDark = isDark,
                         onClick = {
-                            viewModel.updateThemeMode(if (isDark) "LIGHT" else "DARK", context as? android.app.Activity)
+                            viewModel.updateThemeMode(if (isDark) "LIGHT" else "DARK")
                         }
                     )
                 }
@@ -1591,7 +1655,7 @@ fun MenuDrawerSheet(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = if (settings.adBlockEnabled) Icons.Outlined.Shield else Icons.Outlined.Warning,
+                                imageVector = if (settings.adBlockEnabled) Icons.Default.Shield else Icons.Default.ShieldMoon,
                                 contentDescription = "Shield Guard",
                                 tint = Color(0xFF4CAF50),
                                 modifier = Modifier.size(24.dp)
@@ -1770,7 +1834,7 @@ fun ShieldDashboardSheet(
     ) { isGranted ->
         if (isGranted) viewModel.toggleWebsiteLocation(currentDomain, true)
         else {
-            android.widget.Toast.makeText(context, "Location Permission Denied", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, BrowserTranslator.translateText("Location Permission Denied", viewModel.settings.value.language), android.widget.Toast.LENGTH_SHORT).show()
             viewModel.toggleWebsiteLocation(currentDomain, false)
         }
     }
@@ -1780,7 +1844,7 @@ fun ShieldDashboardSheet(
     ) { isGranted ->
         if (isGranted) viewModel.toggleWebsiteCamera(currentDomain, true)
         else {
-            android.widget.Toast.makeText(context, "Camera Permission Denied", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, BrowserTranslator.translateText("Camera Permission Denied", viewModel.settings.value.language), android.widget.Toast.LENGTH_SHORT).show()
             viewModel.toggleWebsiteCamera(currentDomain, false)
         }
     }
@@ -1790,12 +1854,12 @@ fun ShieldDashboardSheet(
     ) { isGranted ->
         if (isGranted) viewModel.toggleWebsiteMicrophone(currentDomain, true)
         else {
-            android.widget.Toast.makeText(context, "Microphone Permission Denied", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, BrowserTranslator.translateText("Microphone Permission Denied", viewModel.settings.value.language), android.widget.Toast.LENGTH_SHORT).show()
             viewModel.toggleWebsiteMicrophone(currentDomain, false)
         }
     }
     
-    val notificationsAllowed = permissionsList.any { it.domain == currentDomain && it.notificationsAllowed == true }
+    val notificationsAllowed = permissionsList.any { it.domain == currentDomain && it.notifications == com.example.data.PermissionState.ALLOW }
 
     val totalAds = settings.totalAdsBlocked
     val totalTrackers = settings.totalTrackersBlocked
@@ -1926,7 +1990,7 @@ fun ShieldDashboardSheet(
                         if (currentActiveTab != null && currentActiveTab.url.isNotEmpty() && !currentActiveTab.url.startsWith("https://search.")) {
                             viewModel.toggleBookmark(currentActiveTab.url, currentActiveTab.title)
                         } else {
-                            android.widget.Toast.makeText(context, "Cannot bookmark this page", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, BrowserTranslator.translateText("Cannot bookmark this page", viewModel.settings.value.language), android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
                     .padding(16.dp),
@@ -1951,9 +2015,9 @@ fun ShieldDashboardSheet(
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(if (isBookmarked) "Saved to Bookmarks" else "Add to Bookmarks", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(if (isBookmarked) trans("Saved to Bookmarks") else trans("Add to Bookmarks"), fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(
-                        text = "Access this page later",
+                        text = trans("Access this page later"),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
@@ -1995,8 +2059,8 @@ fun ShieldDashboardSheet(
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Ad-Blocking Protection", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("Stop intrusive ads and malicious popups", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        Text(trans("Ad-Blocking Protection"), fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(trans("Stop intrusive ads and malicious popups"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                     }
                     Switch(
                         checked = settings.adBlockEnabled,
@@ -2037,8 +2101,8 @@ fun ShieldDashboardSheet(
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Anti-Tracker Shield", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("Prevent tracking pixels from recording cookies", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        Text(trans("Anti-Tracker Shield"), fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(trans("Prevent tracking pixels from recording cookies"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                     }
                     Switch(
                         checked = settings.trackerBlockEnabled,
@@ -2051,7 +2115,7 @@ fun ShieldDashboardSheet(
                 }
 
                 // Website Permissions Section
-                val activePerm = permissionsList.find { it.domain == currentDomain } ?: WebsitePermission(domain = currentDomain, notificationsAllowed = false, locationAllowed = false, cameraAllowed = false, microphoneAllowed = false)
+                val activePerm = permissionsList.find { it.domain == currentDomain } ?: com.example.data.WebsitePermission(domain = currentDomain, notifications = com.example.data.PermissionState.ASK, location = com.example.data.PermissionState.ASK, camera = com.example.data.PermissionState.ASK, microphone = com.example.data.PermissionState.ASK)
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -2070,7 +2134,7 @@ fun ShieldDashboardSheet(
                         .clip(RoundedCornerShape(18.dp))
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
-                        .clickable { viewModel.toggleWebsiteNotification(currentDomain, activePerm.notificationsAllowed != true) }
+                        .clickable { viewModel.toggleWebsiteNotification(currentDomain, activePerm.notifications != com.example.data.PermissionState.ALLOW) }
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -2094,14 +2158,14 @@ fun ShieldDashboardSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Allow Website Notifications", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
-                            text = if (activePerm.notificationsAllowed == true) "Allowed for $currentDomain" else "Receive instant updates from $currentDomain",
+                            text = if (activePerm.notifications == com.example.data.PermissionState.ALLOW) "Allowed for $currentDomain" else "Receive instant updates from $currentDomain",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                     Switch(
-                        checked = activePerm.notificationsAllowed == true,
-                        onCheckedChange = { viewModel.toggleWebsiteNotification(currentDomain, activePerm.notificationsAllowed != true) },
+                        checked = activePerm.notifications == com.example.data.PermissionState.ALLOW,
+                        onCheckedChange = { viewModel.toggleWebsiteNotification(currentDomain, activePerm.notifications != com.example.data.PermissionState.ALLOW) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = MaterialTheme.colorScheme.primary
@@ -2117,7 +2181,7 @@ fun ShieldDashboardSheet(
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
                         .clickable { 
-                            if (activePerm.locationAllowed != true) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            if (activePerm.location != com.example.data.PermissionState.ALLOW) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
                             else viewModel.toggleWebsiteLocation(currentDomain, false)
                         }
                         .padding(16.dp),
@@ -2143,15 +2207,15 @@ fun ShieldDashboardSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Allow Location Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
-                            text = if (activePerm.locationAllowed == true) "Location permission active" else "Allow site to ask for location",
+                            text = if (activePerm.location == com.example.data.PermissionState.ALLOW) "Location permission active" else "Allow site to ask for location",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                     Switch(
-                        checked = activePerm.locationAllowed == true,
+                        checked = activePerm.location == com.example.data.PermissionState.ALLOW,
                         onCheckedChange = { 
-                            if (activePerm.locationAllowed != true) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            if (activePerm.location != com.example.data.PermissionState.ALLOW) locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
                             else viewModel.toggleWebsiteLocation(currentDomain, false)
                         },
                         colors = SwitchDefaults.colors(
@@ -2169,7 +2233,7 @@ fun ShieldDashboardSheet(
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
                         .clickable { 
-                            if (activePerm.cameraAllowed != true) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            if (activePerm.camera != com.example.data.PermissionState.ALLOW) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
                             else viewModel.toggleWebsiteCamera(currentDomain, false)
                         }
                         .padding(16.dp),
@@ -2195,15 +2259,15 @@ fun ShieldDashboardSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Allow Camera Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
-                            text = if (activePerm.cameraAllowed == true) "Camera permission active" else "Allow site to ask for camera",
+                            text = if (activePerm.camera == com.example.data.PermissionState.ALLOW) "Camera permission active" else "Allow site to ask for camera",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                     Switch(
-                        checked = activePerm.cameraAllowed == true,
+                        checked = activePerm.camera == com.example.data.PermissionState.ALLOW,
                         onCheckedChange = { 
-                            if (activePerm.cameraAllowed != true) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            if (activePerm.camera != com.example.data.PermissionState.ALLOW) cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
                             else viewModel.toggleWebsiteCamera(currentDomain, false)
                         },
                         colors = SwitchDefaults.colors(
@@ -2221,7 +2285,7 @@ fun ShieldDashboardSheet(
                         .background(if (isDark) Color(0x10FFFFFF) else Color(0x0A000000))
                         .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
                         .clickable { 
-                            if (activePerm.microphoneAllowed != true) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            if (activePerm.microphone != com.example.data.PermissionState.ALLOW) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                             else viewModel.toggleWebsiteMicrophone(currentDomain, false)
                         }
                         .padding(16.dp),
@@ -2247,15 +2311,15 @@ fun ShieldDashboardSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Allow Microphone Access", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
-                            text = if (activePerm.microphoneAllowed == true) "Microphone permission active" else "Allow site to ask for microphone",
+                            text = if (activePerm.microphone == com.example.data.PermissionState.ALLOW) "Microphone permission active" else "Allow site to ask for microphone",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                     Switch(
-                        checked = activePerm.microphoneAllowed == true,
+                        checked = activePerm.microphone == com.example.data.PermissionState.ALLOW,
                         onCheckedChange = { 
-                            if (activePerm.microphoneAllowed != true) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            if (activePerm.microphone != com.example.data.PermissionState.ALLOW) micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                             else viewModel.toggleWebsiteMicrophone(currentDomain, false)
                         },
                         colors = SwitchDefaults.colors(
@@ -2900,7 +2964,7 @@ fun TabsOverviewPage(
                         ) {
                             item(span = StaggeredGridItemSpan.FullLine, key = "open_tabs_title") {
                                 Text(
-                                    text = "Open Tabs",
+                                    text = trans("Open Tabs"),
                                     fontFamily = activeFont,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 18.sp,
@@ -3007,13 +3071,10 @@ fun SettingsSheet(
     val webPerms by viewModel.websitePermissions.collectAsState()
 
     var showAppearancePage by remember { mutableStateOf(false) }
+    var showSitePermissionsPage by remember { mutableStateOf(false) }
     var showSearchEnginePage by remember { mutableStateOf(false) }
-    var showLanguagesPage by remember { mutableStateOf(false) }
+    var showLanguagePage by remember { mutableStateOf(false) }
     var settingsSearchQuery by remember { mutableStateOf("") }
-
-    androidx.activity.compose.BackHandler(enabled = showAppearancePage) { showAppearancePage = false }
-    androidx.activity.compose.BackHandler(enabled = showSearchEnginePage) { showSearchEnginePage = false }
-    androidx.activity.compose.BackHandler(enabled = showLanguagesPage) { showLanguagesPage = false }
 
     val query = settingsSearchQuery.trim().lowercase()
 
@@ -3026,16 +3087,13 @@ fun SettingsSheet(
         "fluid animations".contains(query) || "motion".contains(query) || "coloros".contains(query) || "animation".contains(query)
 
     val showSecurityGroup = query.isEmpty() ||
-        "ad shield block".contains(query) || "ad".contains(query) || "shield".contains(query) || "tracker shield block".contains(query) || "tracker".contains(query) || "security".contains(query) || "protect".contains(query) || "block".contains(query)
-
-    val showNotificationGroup = webPerms.isNotEmpty() && (query.isEmpty() ||
-        "notifications".contains(query) || "website permissions".contains(query) || "allowed notifications".contains(query) ||
-        webPerms.any { it.domain.lowercase().contains(query) })
+        "ad shield block".contains(query) || "ad".contains(query) || "shield".contains(query) || "tracker shield block".contains(query) || "tracker".contains(query) || "security".contains(query) || "protect".contains(query) || "block".contains(query) ||
+        "site permissions".contains(query) || "privacy".contains(query)
 
     val showDataGroup = query.isEmpty() ||
         "clear browsing statistics".contains(query) || "clear statistics".contains(query) || "erase history".contains(query) || "delete data".contains(query) || "clear browsing".contains(query) || "reset".contains(query)
 
-    val noSettingsFound = !showGeneralGroup && !showCustomizationGroup && !showSecurityGroup && !showNotificationGroup && !showDataGroup
+    val noSettingsFound = !showGeneralGroup && !showCustomizationGroup && !showSecurityGroup && !showDataGroup
 
     // Local wallpaper picker carousel (simulating dynamic glass wall backdrops)
     var wallpaperIndex by remember { mutableStateOf(0) }
@@ -3063,6 +3121,14 @@ fun SettingsSheet(
                     isDark = isDark,
                     onBack = { showAppearancePage = false }
                 )
+            } else if (showSitePermissionsPage) {
+                SitePermissionsSubPage(
+                    viewModel = viewModel,
+                    settings = settings,
+                    activeFont = activeFont,
+                    isDark = isDark,
+                    onBack = { showSitePermissionsPage = false }
+                )
             } else if (showSearchEnginePage) {
                 SearchEngineSubPage(
                     viewModel = viewModel,
@@ -3071,13 +3137,13 @@ fun SettingsSheet(
                     isDark = isDark,
                     onBack = { showSearchEnginePage = false }
                 )
-            } else if (showLanguagesPage) {
-                LanguagesSubPage(
+            } else if (showLanguagePage) {
+                LanguageSubPage(
                     viewModel = viewModel,
                     settings = settings,
                     activeFont = activeFont,
                     isDark = isDark,
-                    onBack = { showLanguagesPage = false }
+                    onBack = { showLanguagePage = false }
                 )
             } else {
                 // 1. Sleek Search Header (Top-bar)
@@ -3106,7 +3172,7 @@ fun SettingsSheet(
                         Box(modifier = Modifier.weight(1f)) {
                             if (settingsSearchQuery.isEmpty()) {
                                 Text(
-                                    text = "Search settings...",
+                                    text = trans("Search settings..."),
                                     fontFamily = activeFont,
                                     fontSize = 14.sp,
                                     color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
@@ -3218,9 +3284,8 @@ fun SettingsSheet(
                                 }
                                 Icon(
                                     imageVector = Icons.Default.KeyboardArrowRight,
-                                    contentDescription = "Go to Search Engine Data",
-                                    tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
-                                    modifier = Modifier.size(20.dp)
+                                    contentDescription = "Go",
+                                    tint = (if (isDark) Color.White else Color.Black).copy(alpha = 0.3f)
                                 )
                             }
 
@@ -3230,7 +3295,7 @@ fun SettingsSheet(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { showLanguagesPage = true }
+                                    .clickable { showLanguagePage = true }
                                     .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -3265,9 +3330,8 @@ fun SettingsSheet(
                                 }
                                 Icon(
                                     imageVector = Icons.Default.KeyboardArrowRight,
-                                    contentDescription = "Go to Language Data",
-                                    tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
-                                    modifier = Modifier.size(20.dp)
+                                    contentDescription = "Go",
+                                    tint = (if (isDark) Color.White else Color.Black).copy(alpha = 0.3f)
                                 )
                             }
                         }
@@ -3279,7 +3343,7 @@ fun SettingsSheet(
                 if (showCustomizationGroup) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "CUSTOMIZATION",
+                        text = trans("CUSTOMIZATION"),
                         fontFamily = activeFont,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
@@ -3319,14 +3383,14 @@ fun SettingsSheet(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Appearance",
+                                        text = trans("Appearance"),
                                         fontFamily = activeFont,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 16.sp,
                                         color = if (isDark) Color.White else Color(0xFF1C1C1E)
                                     )
                                     Text(
-                                        text = "Typography, Spacing Details, Themes, Accent Color",
+                                        text = trans("Typography, Spacing Details, Themes, Accent Color"),
                                         fontFamily = activeFont,
                                         fontSize = 13.sp,
                                         color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.6f)
@@ -3366,14 +3430,14 @@ fun SettingsSheet(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Fluid Animations",
+                                        text = trans("Fluid Animations"),
                                         fontFamily = activeFont,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 16.sp,
                                         color = if (isDark) Color.White else Color(0xFF1C1C1E)
                                     )
                                     Text(
-                                        text = "ColorOS motion effects",
+                                        text = trans("ColorOS motion effects"),
                                         fontFamily = activeFont,
                                         fontSize = 12.sp,
                                         color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
@@ -3397,7 +3461,7 @@ fun SettingsSheet(
                 if (showSecurityGroup) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "SECURITY & SHIELD",
+                        text = trans("SECURITY & SHIELD"),
                         fontFamily = activeFont,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
@@ -3428,7 +3492,7 @@ fun SettingsSheet(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Outlined.Shield,
+                                        imageVector = Icons.Default.Shield,
                                         contentDescription = "Shield Icon",
                                         tint = Color(0xFF4CAF50),
                                         modifier = Modifier.size(20.dp)
@@ -3437,14 +3501,14 @@ fun SettingsSheet(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Ad Shield Block",
+                                        text = trans("Ad Shield Block"),
                                         fontFamily = activeFont,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 16.sp,
                                         color = if (isDark) Color.White else Color(0xFF1C1C1E)
                                     )
                                     Text(
-                                        text = if (settings.adBlockEnabled) "Blocked $sessionAds ads this session (Total: ${settings.totalAdsBlocked})" else "Shield inactive",
+                                        text = if (settings.adBlockEnabled) trans("Blocked $sessionAds ads this session (Total: ${settings.totalAdsBlocked})") else trans("Shield inactive"),
                                         fontFamily = activeFont,
                                         fontSize = 12.sp,
                                         color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
@@ -3486,14 +3550,14 @@ fun SettingsSheet(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Tracker Shield Block",
+                                        text = trans("Tracker Shield Block"),
                                         fontFamily = activeFont,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 16.sp,
                                         color = if (isDark) Color.White else Color(0xFF1C1C1E)
                                     )
                                     Text(
-                                        text = if (settings.trackerBlockEnabled) "Blocked $sessionTrackers cookies/trackers (Total: ${settings.totalTrackersBlocked})" else "Shield inactive",
+                                        text = if (settings.trackerBlockEnabled) trans("Blocked $sessionTrackers cookies/trackers (Total: ${settings.totalTrackersBlocked})") else trans("Shield inactive"),
                                         fontFamily = activeFont,
                                         fontSize = 12.sp,
                                         color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
@@ -3513,11 +3577,11 @@ fun SettingsSheet(
                 }
                 }
 
-                // 4. SITE PERMISSIONS GROUP
-                if (showNotificationGroup) {
+                // 4. SITE PERMISSIONS ENTRY
+                if (showSecurityGroup) { // Keep it in security logic just like prompt suggested
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = "SITE PERMISSIONS",
+                            text = trans("PRIVACY & SECURITY"),
                             fontFamily = activeFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
@@ -3531,83 +3595,37 @@ fun SettingsSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+                                .clickable { showSitePermissionsPage = true }
                         ) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(Color(0xFF3F51B5).copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
                                 ) {
+                                    Icon(Icons.Default.VpnKey, contentDescription = null, tint = Color(0xFF3F51B5), modifier = Modifier.size(20.dp))
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Saved Preferences",
+                                        text = "Site Permissions",
                                         fontFamily = activeFont,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 16.sp,
                                         color = if (isDark) Color.White else Color(0xFF1C1C1E)
                                     )
-                                    TextButton(onClick = { viewModel.clearAllWebsitePermissions() }) {
-                                        Text(
-                                            text = "Revoke All",
-                                            fontFamily = activeFont,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
+                                    Text(
+                                        text = "${webPerms.size} sites have custom permissions",
+                                        fontFamily = activeFont,
+                                        fontSize = 12.sp,
+                                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
+                                    )
                                 }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    webPerms.forEach { perm ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(if (isDark) Color(0x10FFFFFF) else Color(0x05000000), RoundedCornerShape(12.dp))
-                                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Security,
-                                                contentDescription = "Site Permissions",
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(12.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = perm.domain,
-                                                    fontFamily = activeFont,
-                                                    fontWeight = FontWeight.Medium,
-                                                    fontSize = 14.sp,
-                                                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                                )
-                                                val activeTextList = mutableListOf<String>()
-                                                if (perm.notificationsAllowed != null) activeTextList.add("Notifications: ${if (perm.notificationsAllowed == true) "Allowed" else "Denied"}")
-                                                if (perm.locationAllowed != null) activeTextList.add("Location: ${if (perm.locationAllowed == true) "Allowed" else "Denied"}")
-                                                if (perm.cameraAllowed != null) activeTextList.add("Camera: ${if (perm.cameraAllowed == true) "Allowed" else "Denied"}")
-                                                if (perm.microphoneAllowed != null) activeTextList.add("Microphone: ${if (perm.microphoneAllowed == true) "Allowed" else "Denied"}")
-                                                val statusText = if (activeTextList.isEmpty()) "No permissions saved" else activeTextList.joinToString(", ")
-                                                
-                                                Text(
-                                                    text = statusText,
-                                                    fontFamily = activeFont,
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = { viewModel.removeWebsitePermission(perm.domain) },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Close,
-                                                    contentDescription = "Delete website permission",
-                                                    tint = Color.Red.copy(alpha = 0.7f),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = if (isDark) Color.White.copy(alpha = 0.5f) else Color.Black.copy(alpha=0.5f))
                             }
                         }
                     }
@@ -3617,7 +3635,7 @@ fun SettingsSheet(
                 if (showDataGroup) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "DATA OPERATIONS",
+                        text = trans("DATA OPERATIONS"),
                         fontFamily = activeFont,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
@@ -3659,14 +3677,14 @@ fun SettingsSheet(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Clear Browsing Statistics",
+                                        text = trans("Clear Browsing Statistics"),
                                         fontFamily = activeFont,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp,
                                         color = Color(0xFFE53935)
                                     )
                                     Text(
-                                        text = "Erase history, cached pages, search keywords",
+                                        text = trans("Erase history, cached pages, search keywords"),
                                         fontFamily = activeFont,
                                         fontSize = 12.sp,
                                         color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
@@ -3855,7 +3873,6 @@ fun ColumnScope.AppearanceSubPage(
     isDark: Boolean,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -3889,7 +3906,7 @@ fun ColumnScope.AppearanceSubPage(
             }
             Spacer(modifier = Modifier.width(16.dp))
             Text(
-                text = "Appearance",
+                text = trans("Appearance"),
                 fontFamily = activeFont,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 24.sp,
@@ -3967,7 +3984,7 @@ fun ColumnScope.AppearanceSubPage(
                                     .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
-                                    .clickable { viewModel.updateThemeMode(mode, context as? android.app.Activity) }
+                                    .clickable { viewModel.updateThemeMode(mode) }
                                     .padding(vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -4145,42 +4162,6 @@ fun ColumnScope.AppearanceSubPage(
                             }
                         }
                     }
-                }
-
-                HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
-
-                // Text Size and Page Zoom Rows
-                var textSizeValue by remember { mutableStateOf(com.example.util.PreferenceHelper.textSize) }
-                var pageZoomValue by remember { mutableStateOf(com.example.util.PreferenceHelper.pageZoom.toFloat()) }
-                
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Text Size: ${textSizeValue.toInt()}%",
-                        fontFamily = activeFont,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                    )
-                    Slider(
-                        value = textSizeValue,
-                        onValueChange = { textSizeValue = it },
-                        onValueChangeFinished = { viewModel.updateTextSize(textSizeValue) },
-                        valueRange = 50f..200f
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Page Zoom: ${pageZoomValue.toInt()}%",
-                        fontFamily = activeFont,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                    )
-                    Slider(
-                        value = pageZoomValue,
-                        onValueChange = { pageZoomValue = it },
-                        onValueChangeFinished = { viewModel.updatePageZoom(pageZoomValue.toInt()) },
-                        valueRange = 50f..200f
-                    )
                 }
 
                 HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
@@ -4396,7 +4377,7 @@ fun BookmarksPage(
                             if (currentUrl.isNotEmpty() && !currentUrl.startsWith("https://search.")) {
                                 viewModel.toggleBookmark(currentUrl, currentTitle)
                             } else {
-                                android.widget.Toast.makeText(context, "Cannot bookmark this page", android.widget.Toast.LENGTH_SHORT).show()
+                                android.widget.Toast.makeText(context, BrowserTranslator.translateText("Cannot bookmark this page", viewModel.settings.value.language), android.widget.Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier.size(36.dp)
@@ -4632,7 +4613,6 @@ fun HistoryPage(
     
     var searchQuery by remember { mutableStateOf("") }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
-    val hazeState = remember { dev.chrisbanes.haze.HazeState() }
     
     // Filter history list
     val filteredHistory = remember(historyList, searchQuery) {
@@ -4642,6 +4622,29 @@ fun HistoryPage(
         }
     }
     
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            title = { Text("Clear All History", fontFamily = activeFont, fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to permanently delete all browsing logs?", fontFamily = activeFont) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.clearBrowsingData()
+                    showClearConfirmDialog = false
+                }) {
+                    Text("Clear All", color = Color(0xFFFF3B30), fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmDialog = false }) {
+                    Text("Cancel", fontFamily = activeFont)
+                }
+            },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = if (isDark) Color(0xFF1E1E22) else Color.White
+        )
+    }
+
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
     Surface(
@@ -4652,7 +4655,7 @@ fun HistoryPage(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-        Box(modifier = Modifier.fillMaxSize().haze(state = hazeState)) {
+        Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -4947,28 +4950,6 @@ fun HistoryPage(
                     )
                 }
             } // AdaptiveNavLayout
-
-            if (showClearConfirmDialog) {
-                GlassyDialog(
-                    hazeState = hazeState,
-                    onDismissRequest = { showClearConfirmDialog = false },
-                    title = { Text("Clear All History", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurface) },
-                    text = { Text("Are you sure you want to permanently delete all browsing logs?", fontFamily = activeFont, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            viewModel.clearBrowsingData()
-                            showClearConfirmDialog = false
-                        }) {
-                            Text("Clear All", color = Color(0xFFFF3B30), fontFamily = activeFont, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showClearConfirmDialog = false }) {
-                            Text("Cancel", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                )
-            }
         } // Box
     } // Surface
 } // Fun
@@ -5023,7 +5004,58 @@ fun DownloadsPage(
 
     var itemToDelete by remember { mutableStateOf<DownloadItem?>(null) }
     var deleteFromStorage by remember { mutableStateOf(false) }
-    val hazeState = remember { dev.chrisbanes.haze.HazeState() }
+
+    if (itemToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text("Delete Download", fontFamily = activeFont, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Are you sure you want to remove this download from your history?", fontFamily = activeFont)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically, 
+                        modifier = Modifier.clickable { deleteFromStorage = !deleteFromStorage }
+                    ) {
+                        Checkbox(
+                            checked = deleteFromStorage,
+                            onCheckedChange = { deleteFromStorage = it }
+                        )
+                        Text("Delete file from device", fontFamily = activeFont)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val item = itemToDelete
+                        if (item != null) {
+                            if (deleteFromStorage) {
+                                try {
+                                    val file = java.io.File(item.filePath)
+                                    if (file.exists()) {
+                                        file.delete()
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
+                            viewModel.deleteDownload(item.id)
+                        }
+                        itemToDelete = null
+                        deleteFromStorage = false
+                    }
+                ) {
+                    Text("Delete", color = dangerColor, fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text("Cancel", fontFamily = activeFont)
+                }
+            }
+        )
+    }
 
     Surface(
         modifier = Modifier
@@ -5033,7 +5065,7 @@ fun DownloadsPage(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-        Box(modifier = Modifier.fillMaxSize().haze(state = hazeState)) {
+        Box(modifier = Modifier.fillMaxSize()) {
             // Content
             Column(
             modifier = Modifier
@@ -5145,7 +5177,7 @@ fun DownloadsPage(
                                     .border(1.dp, itemBorder, RoundedCornerShape(20.dp))
                                     .clickable {
                                         if (isCompleted) {
-                                            openDownloadedFile(context, downloadItem.filePath, downloadItem.mimeType)
+                                            openDownloadedFile(context, downloadItem.filePath, downloadItem.mimeType, viewModel.settings.value.language)
                                         }
                                     }
                                     .padding(16.dp),
@@ -5168,42 +5200,8 @@ fun DownloadsPage(
                                     } else {
                                         val speed = viewModel.downloadSpeeds[downloadItem.id] ?: "Active"
                                         val eta = viewModel.downloadEtas[downloadItem.id]
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(downloadItem.status, fontSize = 13.sp, color = textMuted, fontFamily = activeFont)
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = speed, 
-                                                    fontSize = 13.sp, 
-                                                    color = textMuted, 
-                                                    fontFamily = activeFont, 
-                                                    style = androidx.compose.ui.text.TextStyle(
-                                                        fontFeatureSettings = "tnum",
-                                                        textAlign = androidx.compose.ui.text.style.TextAlign.End
-                                                    ),
-                                                    modifier = Modifier.width(72.dp)
-                                                )
-                                                if (eta != null) {
-                                                    Text(
-                                                        text = eta, 
-                                                        fontSize = 13.sp, 
-                                                        color = textMuted, 
-                                                        fontFamily = activeFont, 
-                                                        style = androidx.compose.ui.text.TextStyle(
-                                                            fontFeatureSettings = "tnum",
-                                                            textAlign = androidx.compose.ui.text.style.TextAlign.End
-                                                        ),
-                                                        modifier = Modifier.width(52.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
+                                        val statusText = if (eta != null) "${downloadItem.status} • $speed • $eta" else "${downloadItem.status} • $speed"
+                                        Text(statusText, fontSize = 13.sp, color = textMuted, fontFamily = activeFont)
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Box(
                                             modifier = Modifier
@@ -5255,7 +5253,7 @@ fun DownloadsPage(
                                                 text = { Text("Share file", color = textMain, fontFamily = activeFont) },
                                                 onClick = {
                                                     isMenuExpanded = false
-                                                    shareDownloadedFile(context, downloadItem.filePath, downloadItem.mimeType)
+                                                    shareDownloadedFile(context, downloadItem.filePath, downloadItem.mimeType, viewModel.settings.value.language)
                                                 }
                                             )
                                         }
@@ -5363,59 +5361,6 @@ fun DownloadsPage(
                 Icon(Icons.Default.Menu, contentDescription = "Menu", tint = accentColor, modifier = Modifier.size(26.dp))
             }
         }
-
-        if (itemToDelete != null) {
-            GlassyDialog(
-                hazeState = hazeState,
-                onDismissRequest = { itemToDelete = null },
-                title = { Text("Delete Download", fontFamily = activeFont, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurface) },
-                text = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Are you sure you want to remove this download from your history?", fontFamily = activeFont, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically, 
-                            modifier = Modifier.clickable { deleteFromStorage = !deleteFromStorage }
-                        ) {
-                            Checkbox(
-                                checked = deleteFromStorage,
-                                onCheckedChange = { deleteFromStorage = it }
-                            )
-                            Text("Delete file from device", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurface)
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val item = itemToDelete
-                            if (item != null) {
-                                if (deleteFromStorage) {
-                                    try {
-                                        val file = java.io.File(item.filePath)
-                                        if (file.exists()) {
-                                            file.delete()
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                }
-                                viewModel.deleteDownload(item.id)
-                            }
-                            itemToDelete = null
-                            deleteFromStorage = false
-                        }
-                    ) {
-                        Text("Delete", color = dangerColor, fontFamily = activeFont, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { itemToDelete = null }) {
-                        Text("Cancel", fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            )
-        }
     }
     }
 }
@@ -5444,11 +5389,11 @@ fun getResolvedMimeType(filePath: String, fallbackMimeType: String?): String {
 }
 
 // Launches system level intents to explore / open completed files safely
-fun openDownloadedFile(context: android.content.Context, filePath: String, mimeType: String?) {
+fun openDownloadedFile(context: android.content.Context, filePath: String, mimeType: String?, lang: String) {
     try {
         val file = java.io.File(filePath)
         if (!file.exists()) {
-            android.widget.Toast.makeText(context, "File not found: $filePath", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, BrowserTranslator.translateText("File not found: ", lang) + filePath, android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
@@ -5460,15 +5405,15 @@ fun openDownloadedFile(context: android.content.Context, filePath: String, mimeT
         }
         context.startActivity(intent)
     } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "Cannot open file: $filePath", android.widget.Toast.LENGTH_LONG).show()
+        android.widget.Toast.makeText(context, BrowserTranslator.translateText("Cannot open file: ", lang) + filePath, android.widget.Toast.LENGTH_LONG).show()
     }
 }
 
-fun shareDownloadedFile(context: android.content.Context, filePath: String, mimeType: String?) {
+fun shareDownloadedFile(context: android.content.Context, filePath: String, mimeType: String?, lang: String) {
     try {
         val file = java.io.File(filePath)
         if (!file.exists()) {
-            android.widget.Toast.makeText(context, "File not found: $filePath", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, BrowserTranslator.translateText("File not found: ", lang) + filePath, android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
@@ -5482,7 +5427,7 @@ fun shareDownloadedFile(context: android.content.Context, filePath: String, mime
         chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(chooser)
     } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "Cannot share file: $filePath", android.widget.Toast.LENGTH_LONG).show()
+        android.widget.Toast.makeText(context, BrowserTranslator.translateText("Cannot share file: ", lang) + filePath, android.widget.Toast.LENGTH_LONG).show()
     }
 }
 
@@ -5604,16 +5549,16 @@ fun isHomepageUrl(url: String?, settings: BrowserSettings? = null): Boolean {
 
 @Composable
 fun glassCardColor(isDark: Boolean) = if (isDark) {
-    Color(0x33000000) // Much more translucent black for darker environments
+    Color(0xA61E1E23) // rgba(30, 30, 35, 0.65)
 } else {
-    Color(0xB3FFFFFF) // 70% white to keep glass effect visible but allow the blur to shine through
+    Color(0xA6FFFFFF) // rgba(255, 255, 255, 0.65)
 }
 
 @Composable
 fun glassBorderColor(isDark: Boolean) = if (isDark) {
-    Color(0x0AFFFFFF)
+    Color(0x1AFFFFFF) // rgba(255, 255, 255, 0.1)
 } else {
-    Color(0x1F000000) // 12% black border for light mode visibility
+    Color(0x80FFFFFF) // rgba(255, 255, 255, 0.5)
 }
 
 fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Modifier = this.drawBehind {
@@ -5621,13 +5566,13 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
     // 1. Base Gradient
     val baseBrush = if (isDark) {
         Brush.linearGradient(
-            colors = listOf(Color(0xFF0D0D14), Color(0xFF0A1220)),
+            colors = listOf(Color(0xFF0F111A), Color(0xFF08090D)),
             start = androidx.compose.ui.geometry.Offset(0f, 0f),
             end = androidx.compose.ui.geometry.Offset(size.width, size.height)
         )
     } else {
         Brush.linearGradient(
-            colors = listOf(Color(0xFFF5F3FF), Color(0xFFFFF0F5)),
+            colors = listOf(Color(0xFFFDFBFB), Color(0xFFEBEDEE)),
             start = androidx.compose.ui.geometry.Offset(0f, 0f),
             end = androidx.compose.ui.geometry.Offset(size.width, size.height)
         )
@@ -5635,61 +5580,32 @@ fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Mo
     drawRect(brush = baseBrush, alpha = alpha)
 
     // 2. Top-Right Orb
-    val topRightColor = if (isDark) Color(0xFF110D1C) else Color(0xFFE8F4FD)
+    val topRightColor = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.12f) else Color(0xFFE2D1C3)
     val topRightCenter = androidx.compose.ui.geometry.Offset(size.width, 0f)
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(topRightColor, Color.Transparent),
             center = topRightCenter,
-            radius = size.width * 0.85f
+            radius = size.width * 0.8f
         ),
         center = topRightCenter,
-        radius = size.width * 0.85f,
+        radius = size.width * 0.8f,
         alpha = alpha
     )
 
-    // 3. Bottom-Left Orb / Accent Theme Colors
-    val bottomLeftColor = if (isDark) Color(0xFF00E5CC).copy(alpha = 0.1f) else Color(0xFF00E5CC).copy(alpha = 0.05f)
+    // 3. Bottom-Left Orb
+    val bottomLeftColor = if (isDark) Color(0xFF818CF8).copy(alpha = 0.12f) else Color(0xFFD4E4F9)
     val bottomLeftCenter = androidx.compose.ui.geometry.Offset(0f, size.height)
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(bottomLeftColor, Color.Transparent),
             center = bottomLeftCenter,
-            radius = size.width * 0.85f
+            radius = size.width * 0.8f
         ),
         center = bottomLeftCenter,
-        radius = size.width * 0.85f,
+        radius = size.width * 0.8f,
         alpha = alpha
     )
-    
-    // 4. Center-Right Orb (ColorOS 16 specific vibe) Accent
-    if (isDark) {
-        val centerRightColor = Color(0xFFFF6B9D).copy(alpha = 0.08f)
-        val centerRightOffset = androidx.compose.ui.geometry.Offset(size.width, size.height * 0.5f)
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(centerRightColor, Color.Transparent),
-                center = centerRightOffset,
-                radius = size.width * 0.7f
-            ),
-            center = centerRightOffset,
-            radius = size.width * 0.7f,
-            alpha = alpha
-        )
-    } else {
-        val centerRightColor = Color(0xFFFF6B9D).copy(alpha = 0.05f)
-        val centerRightOffset = androidx.compose.ui.geometry.Offset(size.width, size.height * 0.5f)
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(centerRightColor, Color.Transparent),
-                center = centerRightOffset,
-                radius = size.width * 0.7f
-            ),
-            center = centerRightOffset,
-            radius = size.width * 0.7f,
-            alpha = alpha
-        )
-    }
 }
 
 @Composable
@@ -5887,7 +5803,7 @@ fun FloatingIOSDownloadHUD(
                     .fillMaxWidth()
                     .clickable { 
                         if (isFinished) {
-                            openDownloadedFile(context, displayItem.filePath, displayItem.mimeType)
+                            openDownloadedFile(context, displayItem.filePath, displayItem.mimeType, viewModel.settings.value.language)
                             onDismissCompleted()
                         } else {
                             showDownloadsPage()
@@ -6030,7 +5946,7 @@ fun FloatingIOSDownloadHUD(
                         Spacer(modifier = Modifier.width(8.dp))
                         TextButton(
                             onClick = { 
-                                openDownloadedFile(context, displayItem.filePath, displayItem.mimeType)
+                                openDownloadedFile(context, displayItem.filePath, displayItem.mimeType, viewModel.settings.value.language)
                                 onDismissCompleted()
                             },
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
@@ -6512,8 +6428,9 @@ fun ColorOSSearchSuggestionsOverlay(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ColumnScope.SearchEngineSubPage(
+fun SearchEngineSubPage(
     viewModel: BrowserViewModel,
     settings: BrowserSettings,
     activeFont: FontFamily,
@@ -6521,127 +6438,72 @@ fun ColumnScope.SearchEngineSubPage(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var customSearchUrl by remember { mutableStateOf(if (settings.searchEngine.startsWith("http")) settings.searchEngine else "") }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .weight(1f)
-            .padding(horizontal = 16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color.Transparent
     ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f), CircleShape)
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Back",
-                    tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                    modifier = Modifier.size(22.dp)
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = if (isDark) Color.White else Color.Black)
+                }
+                androidx.compose.material3.Text(
+                    text = trans("Search Engine"),
+                    fontFamily = activeFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = if (isDark) Color.White else Color.Black
                 )
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(
-                text = "Search Engine",
-                fontFamily = activeFont,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 24.sp,
-                color = if (isDark) Color.White else Color(0xFF1C1C1E)
-            )
-        }
 
-        Surface(
-            color = glassCardColor(isDark),
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                val engines = listOf(
-                    "StormX" to "search.stormx.ninja",
-                    "Google" to "Google",
-                    "Bing" to "Bing",
-                    "Yahoo" to "Yahoo",
-                    "DuckDuckGo" to "DuckDuckGo",
-                    "Baidu" to "Baidu"
-                )
-
-                engines.forEachIndexed { index, (name, value) ->
-                    val isSelected = settings.searchEngine == value
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.updateSearchEngine(value, context) }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = name,
-                            fontFamily = activeFont,
-                            fontSize = 16.sp,
-                            color = if (isDark) Color.White else Color(0xFF1C1C1E),
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Active",
-                                tint = Color(0xFF0066FF),
-                                modifier = Modifier.size(20.dp)
-                            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Surface(
+                    color = glassCardColor(isDark),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                        listOf("StormX", "Google", "Bing", "Yahoo", "DuckDuckGo").forEach { engineName ->
+                            val engineValue = if (engineName == "StormX") "search.stormx.ninja" else engineName
+                            val isSelected = settings.searchEngine == engineValue
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { viewModel.updateSearchEngine(engineValue, context) }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                androidx.compose.material3.Text(
+                                    text = trans(engineName),
+                                    fontFamily = activeFont,
+                                    fontSize = 16.sp,
+                                    color = if (isDark) Color.White else Color.Black
+                                )
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selected",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
                         }
                     }
-                    if (index < engines.size - 1) {
-                        HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
-                    }
-                }
-            }
-        }
-
-        Text(
-            text = "CUSTOM SEARCH ENGINE",
-            fontFamily = activeFont,
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f),
-            modifier = Modifier.padding(start = 16.dp, bottom = 0.dp)
-        )
-
-        Surface(
-            color = glassCardColor(isDark),
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                OutlinedTextField(
-                    value = customSearchUrl,
-                    onValueChange = { customSearchUrl = it },
-                    placeholder = { Text("https://my-search.com/search?q=") },
-                    textStyle = LocalTextStyle.current.copy(fontFamily = activeFont),
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(
-                    onClick = { if (customSearchUrl.isNotBlank()) viewModel.updateSearchEngine(customSearchUrl, context) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Set Custom Search Engine", fontFamily = activeFont)
                 }
             }
         }
@@ -6649,135 +6511,386 @@ fun ColumnScope.SearchEngineSubPage(
 }
 
 @Composable
-fun ColumnScope.LanguagesSubPage(
+fun LanguageSubPage(
     viewModel: BrowserViewModel,
     settings: BrowserSettings,
     activeFont: FontFamily,
     isDark: Boolean,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
-    
     val allLanguages = listOf(
-        "English", "简体中文", "Español", "Deutsch", "Français", "Italiano", "日本語", "한국어", "Русский", "Português", "Hindi", "Arabic",
-        "Türkçe", "Nederlands", "Polski", "ภาษาไทย", "Bahasa Indonesia", "Tiếng Việt", "Svenska", "Ελληνικά", "Dansk", "Suomi", "Norsk",
-        "Čeština", "Magyar", "Română", "Українська", "עברית", "Bahasa Melayu", "Filipino", "Slovenčina", "Български", "Hrvatski", "Srpski"
+        "English (US)", "English (UK)", "简体中文", "繁體中文", "Español", "Deutsch", "Français", "Italiano", "日本語", 
+        "Afrikaans", "Shqip (Albanian)", "አማርኛ (Amharic)", "العربية (Arabic)", "Հայերեն (Armenian)", "Azərbaycan dili (Azerbaijani)", 
+        "Euskara (Basque)", "Беларуская (Belarusian)", "বাংলা (Bengali)", "Bosanski (Bosnian)", "Български (Bulgarian)", 
+        "Català (Catalan)", "Cebuano", "Chichewa", "Corsu (Corsican)", "Hrvatski (Croatian)", "Čeština (Czech)", "Dansk (Danish)", 
+        "Nederlands (Dutch)", "Esperanto", "Eesti (Estonian)", "Filipino", "Suomi (Finnish)", "Frysk (Frisian)", "Galego (Galician)", 
+        "ქართული (Georgian)", "Ελληνικά (Greek)", "ગુજરાતી (Gujarati)", "Kreyòl ayisyen (Haitian Creole)", "Hausa", "ʻŌlelo Hawaiʻi (Hawaiian)", 
+        "עברית (Hebrew)", "हिन्दी (Hindi)", "Hmong", "Magyar (Hungarian)", "Íslenska (Icelandic)", "Igbo", "Bahasa Indonesia (Indonesian)", 
+        "Gaeilge (Irish)", "Basa Jawa (Javanese)", "ಕನ್ನಡ (Kannada)", "Қазақ тілі (Kazakh)", "ខ្មែរ (Khmer)", "Kinyarwanda", 
+        "한국어 (Korean)", "Kurdî (Kurdish)", "Кыргызча (Kyrgyz)", "ລາວ (Lao)", "Latina (Latin)", "Latviešu (Latvian)", 
+        "Lietuvių (Lithuanian)", "Lëtzebuergesch (Luxembourgish)", "Македонски (Macedonian)", "Malagasy", "Bahasa Melayu (Malay)", 
+        "മലയാളം (Malayalam)", "Malti (Maltese)", "Māori", "मराठी (Marathi)", "Монгол (Mongolian)", "ဗမာစာ (Burmese)", "नेपाली (Nepali)", 
+        "Norsk (Norwegian)", "ଓଡ଼ିଆ (Odia)", "پښتو (Pashto)", "فارسی (Persian)", "Polski (Polish)", "Português (Portuguese)", 
+        "ਪੰਜਾਬੀ (Punjabi)", "Română (Romanian)", "Русский (Russian)", "Gagana fa'a Sāmoa (Samoan)", "Gàidhlig (Scots Gaelic)", 
+        "Српски (Serbian)", "Sesotho", "Shona", "سنڌي (Sindhi)", "සිංහල (Sinhala)", "Slovenčina (Slovak)", "Slovenščina (Slovenian)", 
+        "Soomaali (Somali)", "Basa Sunda (Sundanese)", "Kiswahili (Swahili)", "Svenska (Swedish)", "Тоҷикӣ (Tajik)", "தமிழ் (Tamil)", 
+        "Татар (Tatar)", "తెలుగు (Telugu)", "ไทย (Thai)", "Türkçe (Turkish)", "Türkmen (Turkmen)", "Українська (Ukrainian)", 
+        "اردو (Urdu)", "ئۇيغۇرچە (Uyghur)", "O'zbek (Uzbek)", "Tiếng Việt (Vietnamese)", "Cymraeg (Welsh)", "isiXhosa (Xhosa)", 
+        "ייִדיש (Yiddish)", "Yorùbá", "isiZulu (Zulu)"
     )
-    val displayLanguages = if (searchQuery.isBlank()) allLanguages else allLanguages.filter { it.contains(searchQuery, ignoreCase = true) }
+    val filteredLanguages = allLanguages.filter { it.lowercase().contains(searchQuery.lowercase()) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .weight(1f)
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color.Transparent
     ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f), CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Back",
-                    tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(
-                text = "Languages",
-                fontFamily = activeFont,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 24.sp,
-                color = if (isDark) Color.White else Color(0xFF1C1C1E)
-            )
-        }
-
-        // Search Bar
-        Surface(
-            color = glassCardColor(isDark),
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header
             Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Search, contentDescription = null, tint = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f))
-                Spacer(modifier = Modifier.width(8.dp))
-                androidx.compose.foundation.text.BasicTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    textStyle = LocalTextStyle.current.copy(
-                        color = if (isDark) Color.White else Color.Black,
-                        fontFamily = activeFont
-                    ),
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    singleLine = true,
-                    decorationBox = { innerTextField ->
-                        if (searchQuery.isEmpty()) {
-                            Text("Search languages...", color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f))
-                        }
-                        innerTextField()
-                    }
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = if (isDark) Color.White else Color.Black)
+                }
+                androidx.compose.material3.Text(
+                    text = trans("Languages"),
+                    fontFamily = activeFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = if (isDark) Color.White else Color.Black
                 )
             }
-        }
 
-        Surface(
-            color = glassCardColor(isDark),
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
-        ) {
-            androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.padding(16.dp)) {
-                items(displayLanguages.size) { index ->
-                    val lang = displayLanguages[index]
-                    val mappedLang = if (lang == "English") "English (US)" else lang
-                    val isSelected = settings.language == mappedLang
+            // Search Bar
+            androidx.compose.foundation.text.BasicTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                textStyle = LocalTextStyle.current.copy(
+                    color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                    fontFamily = activeFont,
+                    fontSize = 16.sp
+                ),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                decorationBox = { innerTextField ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { viewModel.updateLanguage(mappedLang, context as? android.app.Activity) }
-                            .padding(vertical = 12.dp),
+                            .background(glassCardColor(isDark), RoundedCornerShape(14.dp))
+                            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(14.dp))
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = mappedLang,
-                            fontFamily = activeFont,
-                            fontSize = 16.sp,
-                            color = if (isDark) Color.White else Color(0xFF1C1C1E),
-                            modifier = Modifier.weight(1f)
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f),
+                            modifier = Modifier.size(20.dp)
                         )
-                        if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Active",
-                                tint = Color(0xFF0066FF),
-                                modifier = Modifier.size(20.dp)
-                            )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (searchQuery.isEmpty()) {
+                                androidx.compose.material3.Text(
+                                    text = trans("Search languages..."),
+                                    color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.4f),
+                                    fontFamily = activeFont,
+                                    fontSize = 16.sp
+                                )
+                            }
+                            innerTextField()
                         }
                     }
-                    if (index < displayLanguages.size - 1) {
-                        HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
+                }
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Surface(
+                    color = glassCardColor(isDark),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                        filteredLanguages.forEach { lang ->
+                            val isSelected = settings.language == lang
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { viewModel.updateLanguage(lang) }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                androidx.compose.material3.Text(
+                                    text = lang,
+                                    fontFamily = activeFont,
+                                    fontSize = 16.sp,
+                                    color = if (isDark) Color.White else Color.Black
+                                )
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selected",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun SitePermissionsSubPage(
+    viewModel: BrowserViewModel,
+    settings: BrowserSettings,
+    activeFont: FontFamily,
+    isDark: Boolean,
+    onBack: () -> Unit
+) {
+    val webPerms by viewModel.websitePermissions.collectAsState()
+    var searchQuery by remember { mutableStateOf("") }
+    
+    val filteredPerms = if (searchQuery.isEmpty()) {
+        webPerms
+    } else {
+        webPerms.filter { it.domain.lowercase().contains(searchQuery.lowercase()) }
+    }
+    
+    var showResetDialog by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color.Transparent
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = if (isDark) Color.White else Color.Black)
+                }
+                Text(
+                    text = trans("Site Permissions"),
+                    fontFamily = activeFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = if (isDark) Color.White else Color.Black
+                )
+            }
+            
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                // Top section - Global Defaults
+                item {
+                    Text(
+                        text = trans("Global defaults"),
+                        fontFamily = activeFont,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Text(
+                        text = trans("Applies to new sites. Existing site permissions are not changed."),
+                        fontFamily = activeFont,
+                        fontSize = 12.sp,
+                        color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f),
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = glassCardColor(isDark),
+                        modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
+                    ) {
+                        Column {
+                            GlobalPermissionRow("Location", Icons.Default.LocationOn, settings.defaultLocation.name, activeFont, isDark)
+                            HorizontalDivider(color = glassBorderColor(isDark))
+                            GlobalPermissionRow("Camera", Icons.Default.CameraAlt, settings.defaultCamera.name, activeFont, isDark)
+                            HorizontalDivider(color = glassBorderColor(isDark))
+                            GlobalPermissionRow("Microphone", Icons.Default.Mic, settings.defaultMicrophone.name, activeFont, isDark)
+                            HorizontalDivider(color = glassBorderColor(isDark))
+                            GlobalPermissionRow("Notifications", Icons.Default.Notifications, settings.defaultNotifications.name, activeFont, isDark)
+                            HorizontalDivider(color = glassBorderColor(isDark))
+                            GlobalPermissionRow("Pop-ups & redirects", Icons.Default.OpenInNew, settings.defaultPopups.name, activeFont, isDark)
+                        }
+                    }
+                }
+                
+                // Bottom section - Per-site overrides
+                item {
+                    Text(
+                        text = trans("Per-site overrides"),
+                        fontFamily = activeFont,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        textStyle = LocalTextStyle.current.copy(
+                            color = if (isDark) Color.White else Color(0xFF1C1C1E),
+                            fontFamily = activeFont,
+                            fontSize = 16.sp
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .background(glassCardColor(isDark), RoundedCornerShape(16.dp))
+                            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 16.dp),
+                        decorationBox = { innerTextField ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Search, null, tint = (if(isDark) Color.White else Color.Black).copy(alpha=0.5f))
+                                Spacer(Modifier.width(8.dp))
+                                Box(Modifier.weight(1f)) {
+                                    if(searchQuery.isEmpty()) {
+                                        Text("Filter sites", color = (if(isDark) Color.White else Color.Black).copy(alpha=0.5f), fontFamily = activeFont)
+                                    }
+                                    innerTextField()
+                                }
+                            }
+                        }
+                    )
+                }
+                
+                items(filteredPerms) { perm ->
+                    var isExpanded by remember { mutableStateOf(false) }
+                    Surface(
+                        color = glassCardColor(isDark),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(16.dp))
+                            .clickable { isExpanded = !isExpanded }
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier.size(32.dp).background(if (isDark) Color(0x33FFFFFF) else Color(0x1A000000), RoundedCornerShape(8.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(20.dp), tint = if (isDark) Color.White else Color.Black)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = perm.domain,
+                                        fontFamily = activeFont,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 16.sp,
+                                        color = if (isDark) Color.White else Color.Black
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
+                                        if (perm.location != com.example.data.PermissionState.ASK) PermChip("Location", perm.location.name, isDark)
+                                        if (perm.camera != com.example.data.PermissionState.ASK) PermChip("Camera", perm.camera.name, isDark)
+                                        if (perm.microphone != com.example.data.PermissionState.ASK) PermChip("Mic", perm.microphone.name, isDark)
+                                    }
+                                }
+                            }
+                            
+                            AnimatedVisibility(visible = isExpanded) {
+                                Column(modifier = Modifier.padding(top = 16.dp)) {
+                                    HorizontalDivider(color = glassBorderColor(isDark), modifier = Modifier.padding(bottom = 8.dp))
+                                    TextButton(
+                                        onClick = { viewModel.removeWebsitePermission(perm.domain); isExpanded = false },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Reset to default", color = Color(0xFFE53935), fontFamily = activeFont)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (webPerms.isNotEmpty()) {
+                    item {
+                        TextButton(
+                            onClick = { showResetDialog = true },
+                            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                        ) {
+                            Text("Reset all site permissions", color = Color(0xFFE53935), fontFamily = activeFont, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Reset Confirmation Dialog
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.clearAllWebsitePermissions(); showResetDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
+                ) {
+                    Text("Reset")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) { Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            },
+            title = { Text("Reset all permissions?", fontFamily = activeFont, fontWeight = FontWeight.Bold) },
+            text = { Text("This will clear all custom site permissions and revert to global defaults.", fontFamily = activeFont) },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    }
+}
+
+@Composable
+fun GlobalPermissionRow(title: String, icon: ImageVector, stateValue: String, activeFont: FontFamily, isDark: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = (if (isDark) Color.White else Color.Black).copy(alpha=0.7f), modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontFamily = activeFont, fontSize = 16.sp, color = if(isDark) Color.White else Color.Black)
+            Text(stateValue, fontFamily = activeFont, fontSize = 13.sp, color = (if(isDark) Color.White else Color.Black).copy(alpha=0.5f))
+        }
+    }
+}
+
+@Composable
+fun PermChip(label: String, stateValue: String, isDark: Boolean) {
+    val isAllowed = stateValue == "ALLOW"
+    val color = if (isAllowed) Color(0xFF4CAF50) else Color(0xFFE53935)
+    Box(
+        modifier = Modifier
+            .background(color.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+            .border(1.dp, color.copy(alpha=0.3f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text("$label ${if(isAllowed) "✓" else "✗"}", fontSize = 10.sp, color = color)
     }
 }

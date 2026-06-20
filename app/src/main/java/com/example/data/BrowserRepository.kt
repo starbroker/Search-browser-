@@ -119,29 +119,21 @@ class BrowserRepository(private val dao: BrowserDao) {
     }
 
     // Website notification permissions
-    val sitePermissionsFlow: Flow<List<SitePermission>> = dao.getAllSitePermissionsFlow()
+    val websitePermissionsFlow: Flow<List<WebsitePermission>> = dao.getAllWebsitePermissionsFlow()
 
-    suspend fun getSitePermission(origin: String, type: String): SitePermission? {
-        return dao.getSitePermission(origin, type)
+    suspend fun addWebsitePermission(domain: String, allowed: Boolean) {
+        dao.insertWebsitePermission(WebsitePermission(domain = domain, notifications = if (allowed) PermissionState.ALLOW else PermissionState.BLOCK))
     }
 
-    suspend fun saveSitePermission(permission: SitePermission) {
-        dao.insertSitePermission(permission)
+    suspend fun saveWebsitePermission(permission: WebsitePermission) {
+        dao.insertWebsitePermission(permission)
     }
 
-    suspend fun updateSitePermission(permission: SitePermission) {
-        dao.updateSitePermission(permission)
+    suspend fun removeWebsitePermission(domain: String) {
+        dao.deleteWebsitePermission(domain)
     }
 
-    suspend fun removeSitePermission(id: Int) {
-        dao.deleteSitePermission(id)
-    }
-
-    suspend fun removeSitePermissions(origin: String) {
-        dao.deleteSitePermissionsByOrigin(origin)
-    }
-
-    suspend fun clearAllSitePermissions() {
-        dao.deleteAllSitePermissions()
+    suspend fun clearAllWebsitePermissions() {
+        dao.deleteAllWebsitePermissions()
     }
 }

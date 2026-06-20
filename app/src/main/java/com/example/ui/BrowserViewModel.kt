@@ -38,14 +38,6 @@ data class TabState(
     val faviconUrl: String? = null
 )
 
-data class WebsitePermission(
-    val domain: String,
-    val notificationsAllowed: Boolean? = null,
-    val locationAllowed: Boolean? = null,
-    val cameraAllowed: Boolean? = null,
-    val microphoneAllowed: Boolean? = null
-)
-
 class BrowserViewModel(
     application: Application,
     private val repository: BrowserRepository
@@ -157,7 +149,6 @@ class BrowserViewModel(
     val showDownloads = MutableStateFlow(false)
     val showShieldPanel = MutableStateFlow(false)
     val showMenuDrawer = MutableStateFlow(false)
-    val showWelcomeScreen = MutableStateFlow(com.example.util.PreferenceHelper.isFirstLaunch)
 
     val tabPreviews = androidx.compose.runtime.mutableStateMapOf<Int, android.graphics.Bitmap>()
 
@@ -194,16 +185,6 @@ class BrowserViewModel(
     )
     val appRedirectProposal = MutableStateFlow<AppRedirectProposal?>(null)
 
-    init {
-        // Pre-create cache directories to prevent Chromium logcat noise regarding missing opendir
-        try {
-            val appCtx = getApplication<Application>()
-            val baseCache = java.io.File(appCtx.cacheDir, "WebView/Default/HTTP Cache/Code Cache")
-            java.io.File(baseCache, "js").mkdirs()
-            java.io.File(baseCache, "wasm").mkdirs()
-        } catch (e: Exception) {}
-    }
-
     data class ImageDownloadProposal(val url: String)
     val imageDownloadProposal = MutableStateFlow<ImageDownloadProposal?>(null)
     
@@ -211,6 +192,7 @@ class BrowserViewModel(
         val domain: String,
         val request: android.webkit.PermissionRequest? = null,
         val resourcesNeeded: List<String> = emptyList(),
+        val allResourcesToGrant: List<String> = emptyList(),
         val geoCallback: android.webkit.GeolocationPermissions.Callback? = null,
         val geoOrigin: String? = null
     )
@@ -252,72 +234,67 @@ class BrowserViewModel(
     val history = repository.historyFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val downloads = repository.downloadsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val settings = repository.settingsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BrowserSettings())
-    val websitePermissions = repository.sitePermissionsFlow.map { list ->
-        list.groupBy { it.origin }.map { (origin, perms) ->
-            WebsitePermission(
-                domain = origin,
-                notificationsAllowed = perms.find { it.permissionType == "notifications" }?.isGranted,
-                locationAllowed = perms.find { it.permissionType == "geolocation" }?.isGranted,
-                cameraAllowed = perms.find { it.permissionType == "camera" }?.isGranted,
-                microphoneAllowed = perms.find { it.permissionType == "microphone" }?.isGranted
-            )
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    private fun saveSitePermissionProxy(domain: String, type: String, allowed: Boolean) {
-        viewModelScope.launch {
-            val existing = repository.getSitePermission(domain, type)
-            if (existing != null) {
-                repository.updateSitePermission(existing.copy(isGranted = allowed, timestamp = System.currentTimeMillis()))
-            } else {
-                repository.saveSitePermission(com.example.data.SitePermission(origin = domain, permissionType = type, isGranted = allowed))
-            }
-        }
-    }
+    val websitePermissions = repository.websitePermissionsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun toggleWebsiteNotification(domain: String, allowed: Boolean) {
-        saveSitePermissionProxy(domain, "notifications", allowed)
-        showIosNotification(
-            title = if (allowed) "Notification Allowed" else "Notification Restricted",
-            message = if (allowed) "Allowing notifications on $domain" else "Restricting notifications on $domain",
-            type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
-            subtext = domain
-        )
+        viewModelScope.launch {
+            val existing = websitePermissions.value.find { it.domain == domain } ?: WebsitePermission(domain = domain)
+            val updated = existing.copy(notifications = if (allowed) PermissionState.ALLOW else PermissionState.BLOCK)
+            repository.saveWebsitePermission(updated)
+            showIosNotification(
+                title = if (allowed) "Notification Allowed" else "Notification Restricted",
+                message = if (allowed) "Allowing notifications on $domain" else "Restricting notifications on $domain",
+                type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
+                subtext = domain
+            )
+        }
     }
 
     fun toggleWebsiteLocation(domain: String, allowed: Boolean) {
-        saveSitePermissionProxy(domain, "geolocation", allowed)
-        showIosNotification(
-            title = if (allowed) "Location Access Allowed" else "Location Access Restricted",
-            message = if (allowed) "Allowing location access on $domain" else "Restricting location access on $domain",
-            type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
-            subtext = domain
-        )
+        viewModelScope.launch {
+            val existing = websitePermissions.value.find { it.domain == domain } ?: WebsitePermission(domain = domain)
+            val updated = existing.copy(location = if (allowed) PermissionState.ALLOW else PermissionState.BLOCK)
+            repository.saveWebsitePermission(updated)
+            showIosNotification(
+                title = if (allowed) "Location Access Allowed" else "Location Access Restricted",
+                message = if (allowed) "Allowing location access on $domain" else "Restricting location access on $domain",
+                type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
+                subtext = domain
+            )
+        }
     }
 
     fun toggleWebsiteCamera(domain: String, allowed: Boolean) {
-        saveSitePermissionProxy(domain, "camera", allowed)
-        showIosNotification(
-            title = if (allowed) "Camera Access Allowed" else "Camera Access Restricted",
-            message = if (allowed) "Allowing camera access on $domain" else "Restricting camera access on $domain",
-            type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
-            subtext = domain
-        )
+        viewModelScope.launch {
+            val existing = websitePermissions.value.find { it.domain == domain } ?: WebsitePermission(domain = domain)
+            val updated = existing.copy(camera = if (allowed) PermissionState.ALLOW else PermissionState.BLOCK)
+            repository.saveWebsitePermission(updated)
+            showIosNotification(
+                title = if (allowed) "Camera Access Allowed" else "Camera Access Restricted",
+                message = if (allowed) "Allowing camera access on $domain" else "Restricting camera access on $domain",
+                type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
+                subtext = domain
+            )
+        }
     }
 
     fun toggleWebsiteMicrophone(domain: String, allowed: Boolean) {
-        saveSitePermissionProxy(domain, "microphone", allowed)
-        showIosNotification(
-            title = if (allowed) "Microphone Access Allowed" else "Microphone Access Restricted",
-            message = if (allowed) "Allowing microphone access on $domain" else "Restricting microphone access on $domain",
-            type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
-            subtext = domain
-        )
+        viewModelScope.launch {
+            val existing = websitePermissions.value.find { it.domain == domain } ?: WebsitePermission(domain = domain)
+            val updated = existing.copy(microphone = if (allowed) PermissionState.ALLOW else PermissionState.BLOCK)
+            repository.saveWebsitePermission(updated)
+            showIosNotification(
+                title = if (allowed) "Microphone Access Allowed" else "Microphone Access Restricted",
+                message = if (allowed) "Allowing microphone access on $domain" else "Restricting microphone access on $domain",
+                type = if (allowed) "WEBSITE_ALLOWED" else "WEBSITE_BLOCKED",
+                subtext = domain
+            )
+        }
     }
 
     fun removeWebsitePermission(domain: String) {
         viewModelScope.launch {
-            repository.removeSitePermissions(domain)
+            repository.removeWebsitePermission(domain)
             showIosNotification(
                 title = "Website Permission Revoked",
                 message = "Removed all permissions for $domain",
@@ -329,7 +306,7 @@ class BrowserViewModel(
 
     fun clearAllWebsitePermissions() {
         viewModelScope.launch {
-            repository.clearAllSitePermissions()
+            repository.clearAllWebsitePermissions()
             showIosNotification(
                 title = "Permissions Cleared",
                 message = "All stored website permissions have been cleared",
@@ -338,49 +315,7 @@ class BrowserViewModel(
         }
     }
 
-    data class UpdateProposal(val newVersion: String, val downloadUrl: String, val releaseNotes: String)
-    val updateProposal = MutableStateFlow<UpdateProposal?>(null)
-
-    private suspend fun checkForUpdates() {
-        withContext(Dispatchers.IO) {
-            try {
-                val currentVersion = getApplication<Application>().packageManager
-                    .getPackageInfo(getApplication<Application>().packageName, 0).versionName ?: "1.0.0"
-                
-                val url = URL("https://api.github.com/repos/HimankCPro/Aether/releases/latest")
-                val connection = url.openConnection() as java.net.HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    val json = org.json.JSONObject(response)
-                    val tagName = json.getString("tag_name").removePrefix("v")
-                    val body = json.getString("body")
-                    val assets = json.getJSONArray("assets")
-                    var downloadUrl = ""
-                    for (i in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(i)
-                        if (asset.getString("name").endsWith(".apk")) {
-                            downloadUrl = asset.getString("browser_download_url")
-                            break
-                        }
-                    }
-                    
-                    if (tagName != currentVersion && downloadUrl.isNotEmpty()) {
-                        updateProposal.value = UpdateProposal(tagName, downloadUrl, body)
-                    }
-                }
-            } catch (e: Exception) {
-                // Ignore API failures silently
-            }
-        }
-    }
-
     init {
-        viewModelScope.launch {
-            checkForUpdates()
-        }
         val startSimulated = prefs.getBoolean("force_simulated_mode", false)
         _forceSimulatedMode.value = startSimulated
 
@@ -463,16 +398,10 @@ class BrowserViewModel(
                 repository.deleteTab(BrowserTab(id = tabToRemove.id, url = tabToRemove.url, title = tabToRemove.title))
                 _tabs.value = currentList.filter { it.id != tabId }
                 
-                // Remove WebView cleanly. Let Compose detach it from the view tree first,
-                // then destroy it to avoid "Channel is unrecoverably broken" crashes.
-                val viewToDestroy = webViewMap.remove(tabId)
-                if (viewToDestroy != null) {
-                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                        try {
-                            (viewToDestroy.parent as? android.view.ViewGroup)?.removeView(viewToDestroy)
-                            viewToDestroy.destroy()
-                        } catch (e: Throwable) {}
-                    }, 500)
+                // Remove WebView safely by detaching from parent view first
+                webViewMap.remove(tabId)?.let { webView ->
+                    (webView.parent as? android.view.ViewGroup)?.removeView(webView)
+                    webView.destroy()
                 }
 
                 if (_activeTabId.value == tabId) {
@@ -539,15 +468,6 @@ class BrowserViewModel(
         }
     }
 
-    private fun applyWebSettings(webView: WebView) {
-        val prefHelper = com.example.util.PreferenceHelper
-        webView.settings.apply {
-            textZoom = prefHelper.textSize.toInt()
-        }
-        val zoomScale = prefHelper.pageZoom
-        webView.setInitialScale(zoomScale)
-    }
-
     private fun createWebViewInstance(tabId: Int, context: Context): WebView {
         
         try {
@@ -573,10 +493,12 @@ class BrowserViewModel(
                 loadWithOverviewMode = true
                 builtInZoomControls = true
                 displayZoomControls = false
-                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                mediaPlaybackRequiresUserGesture = false
+                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                mediaPlaybackRequiresUserGesture = true
+                setGeolocationEnabled(true)
+                allowFileAccess = false
+                allowContentAccess = false
             }
-            applyWebSettings(this)
             
             // Allow cookies
             val cookieManager = CookieManager.getInstance()
@@ -677,70 +599,6 @@ class BrowserViewModel(
                             repository.addHistory(it, title)
                             repository.updateTab(BrowserTab(id = tabId, url = it, title = title))
                         }
-                        
-                        if (it.contains("search.stormx.ninja")) {
-                            val isSystemDark = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
-                            val isDark = when(this@BrowserViewModel.settings.value.themeMode) {
-                                "DARK" -> true
-                                "LIGHT" -> false
-                                else -> isSystemDark
-                            }
-                            val js = if (isDark) {
-                                """
-                                javascript:(function() {
-                                    document.body.style.background = 'linear-gradient(135deg, #0D0D14 0%, #110D1C 50%, #0A1220 100%)';
-                                    document.body.style.backgroundAttachment = 'fixed';
-                                    document.body.style.color = '#E2E8F0';
-                                    var items = document.querySelectorAll('.result, .result-content, #search_form');
-                                    for(var i=0; i<items.length; i++) {
-                                        items[i].style.background = 'rgba(255,255,255,0.05)';
-                                        items[i].style.backdropFilter = 'blur(16px)';
-                                        items[i].style.borderRadius = '20px';
-                                        items[i].style.border = '1px solid rgba(255,255,255,0.08)';
-                                    }
-                                    var links = document.querySelectorAll('h4 a, h3 a, .url');
-                                    for(var i=0; i<links.length; i++) {
-                                        links[i].style.color = '#00E5CC';
-                                    }
-                                    var inputs = document.querySelectorAll('input');
-                                    for(var i=0; i<inputs.length; i++) {
-                                        inputs[i].style.background = 'rgba(255,255,255,0.08)';
-                                        inputs[i].style.color = '#FFFFFF';
-                                        inputs[i].style.border = '1px solid rgba(255,255,255,0.1)';
-                                        inputs[i].style.borderRadius = '30px';
-                                    }
-                                })()
-                                """
-                            } else {
-                                """
-                                javascript:(function() {
-                                    document.body.style.background = 'linear-gradient(135deg, #F5F3FF 0%, #E8F4FD 50%, #FFF0F5 100%)';
-                                    document.body.style.backgroundAttachment = 'fixed';
-                                    document.body.style.color = '#1E293B';
-                                    var items = document.querySelectorAll('.result, .result-content, #search_form');
-                                    for(var i=0; i<items.length; i++) {
-                                        items[i].style.background = 'rgba(255,255,255,0.6)';
-                                        items[i].style.backdropFilter = 'blur(16px)';
-                                        items[i].style.borderRadius = '20px';
-                                        items[i].style.border = '1px solid rgba(0,0,0,0.05)';
-                                        items[i].style.boxShadow = '0 8px 32px rgba(0,0,0,0.04)';
-                                    }
-                                    var links = document.querySelectorAll('h4 a, h3 a, .url');
-                                    for(var i=0; i<links.length; i++) {
-                                        links[i].style.color = '#FF6B9D';
-                                    }
-                                    var inputs = document.querySelectorAll('input');
-                                    for(var i=0; i<inputs.length; i++) {
-                                        inputs[i].style.background = 'rgba(255,255,255,0.8)';
-                                        inputs[i].style.color = '#1E293B';
-                                        inputs[i].style.border = '1px solid rgba(0,0,0,0.1)';
-                                        inputs[i].style.borderRadius = '30px';
-                                    }
-                                })()
-                                """
-                            }
-                            view?.evaluateJavascript(js, null)
-                        }
                     }
                 }
 
@@ -787,30 +645,38 @@ class BrowserViewModel(
                     val domain = getDomainFromUrl(origin)
                     val perm = websitePermissions.value.find { it.domain == domain }
                     
-                    val cameraAllowed = perm?.cameraAllowed
-                    val micAllowed = perm?.microphoneAllowed
+                    val cameraAllowed = perm?.camera == com.example.data.PermissionState.ALLOW
+                    val cameraBlocked = perm?.camera == com.example.data.PermissionState.BLOCK
+                    val micAllowed = perm?.microphone == com.example.data.PermissionState.ALLOW
+                    val micBlocked = perm?.microphone == com.example.data.PermissionState.BLOCK
                     
                     val autoGrantedResources = mutableListOf<String>()
                     val resourcesNeeded = mutableListOf<String>()
                     for (res in request.resources) {
                         if (res == android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE) {
-                            when (cameraAllowed) {
-                                true -> autoGrantedResources.add(res)
-                                null -> resourcesNeeded.add(res)
-                                false -> { /* Denied, do not add */ }
+                            if (cameraAllowed) {
+                                autoGrantedResources.add(res)
+                            } else if (!cameraBlocked) {
+                                resourcesNeeded.add(res)
                             }
                         } else if (res == android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE) {
-                            when (micAllowed) {
-                                true -> autoGrantedResources.add(res)
-                                null -> resourcesNeeded.add(res)
-                                false -> { /* Denied, do not add */ }
+                            if (micAllowed) {
+                                autoGrantedResources.add(res)
+                            } else if (!micBlocked) {
+                                resourcesNeeded.add(res)
                             }
                         } else {
                             autoGrantedResources.add(res)
                         }
                     }
                     if (resourcesNeeded.isNotEmpty()) {
-                        permissionRequestProposal.value = PermissionProposal(domain, request, resourcesNeeded)
+                        val allResourcesToGrant = resourcesNeeded + autoGrantedResources
+                        permissionRequestProposal.value = PermissionProposal(
+                            domain = domain,
+                            request = request,
+                            resourcesNeeded = resourcesNeeded,
+                            allResourcesToGrant = allResourcesToGrant
+                        )
                     } else if (autoGrantedResources.isNotEmpty()) {
                         request.grant(autoGrantedResources.toTypedArray())
                     } else {
@@ -824,18 +690,20 @@ class BrowserViewModel(
                 ) {
                     if (origin == null || callback == null) return
                     val domain = getDomainFromUrl(origin)
-                    val allowed = websitePermissions.value.find { it.domain == domain }?.locationAllowed
+                    val permState = websitePermissions.value.find { it.domain == domain }?.location
                     
-                    if (allowed == true) {
+                    if (permState == com.example.data.PermissionState.ALLOW) {
                         callback.invoke(origin, true, true)
-                    } else if (allowed == null) {
+                    } else if (permState == com.example.data.PermissionState.BLOCK) {
+                        callback.invoke(origin, false, true)
+                    } else {
                         permissionRequestProposal.value = PermissionProposal(
                             domain = domain,
                             geoCallback = callback,
-                            geoOrigin = origin
+                            geoOrigin = origin,
+                            resourcesNeeded = listOf("location"),
+                            allResourcesToGrant = emptyList()
                         )
-                    } else {
-                        callback.invoke(origin, false, false)
                     }
                 }
             }
@@ -878,38 +746,36 @@ class BrowserViewModel(
         }
     }
     
-    fun handlePermissionProposal(grant: Boolean, remember: Boolean) {
+    fun handlePermissionProposal(grant: Boolean) {
         val proposal = permissionRequestProposal.value ?: return
         if (grant) {
             try {
-                proposal.request?.grant(proposal.resourcesNeeded.toTypedArray())
+                if (proposal.allResourcesToGrant.isNotEmpty()) {
+                    proposal.request?.grant(proposal.allResourcesToGrant.toTypedArray())
+                }
             } catch (e: Exception) {}
             try {
-                proposal.geoCallback?.invoke(proposal.geoOrigin, true, remember) // geoCallback takes remember boolean directly
+                proposal.geoCallback?.invoke(proposal.geoOrigin, true, true)
             } catch (e: Exception) {}
             
-            if (remember) {
-                val needsCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
-                val needsMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
-                if (needsCamera) toggleWebsiteCamera(proposal.domain, true)
-                if (needsMic) toggleWebsiteMicrophone(proposal.domain, true)
-                if (proposal.geoCallback != null) toggleWebsiteLocation(proposal.domain, true)
-            }
+            val needsCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+            val needsMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+            if (needsCamera) toggleWebsiteCamera(proposal.domain, true)
+            if (needsMic) toggleWebsiteMicrophone(proposal.domain, true)
+            if (proposal.geoCallback != null) toggleWebsiteLocation(proposal.domain, true)
         } else {
             try {
                 proposal.request?.deny()
             } catch (e: Exception) {}
             try {
-                proposal.geoCallback?.invoke(proposal.geoOrigin, false, remember)
+                proposal.geoCallback?.invoke(proposal.geoOrigin, false, true)
             } catch (e: Exception) {}
             
-            if (remember) {
-                val needsCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
-                val needsMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
-                if (needsCamera) toggleWebsiteCamera(proposal.domain, false)
-                if (needsMic) toggleWebsiteMicrophone(proposal.domain, false)
-                if (proposal.geoCallback != null) toggleWebsiteLocation(proposal.domain, false)
-            }
+            val needsCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+            val needsMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+            if (needsCamera) toggleWebsiteCamera(proposal.domain, false)
+            if (needsMic) toggleWebsiteMicrophone(proposal.domain, false)
+            if (proposal.geoCallback != null) toggleWebsiteLocation(proposal.domain, false)
         }
         permissionRequestProposal.value = null
     }
@@ -986,14 +852,7 @@ class BrowserViewModel(
                     "Bing" -> "https://www.bing.com/search?q=${Uri.encode(formattedUrl)}"
                     "Yahoo" -> "https://search.yahoo.com/search?p=${Uri.encode(formattedUrl)}"
                     "DuckDuckGo" -> "https://duckduckgo.com/?q=${Uri.encode(formattedUrl)}"
-                    "Baidu" -> "https://www.baidu.com/s?wd=${Uri.encode(formattedUrl)}"
-                    else -> {
-                        if (engine.startsWith("http")) {
-                            "${engine}${Uri.encode(formattedUrl)}"
-                        } else {
-                            "https://search.stormx.ninja/search?q=${Uri.encode(formattedUrl)}"
-                        }
-                    }
+                    else -> "https://search.stormx.ninja/search?q=${Uri.encode(formattedUrl)}"
                 }
             }
         }
@@ -1038,13 +897,6 @@ class BrowserViewModel(
             if (webView != null && webView.canGoBack()) {
                 webView.goBack()
             }
-        } catch (e: Throwable) {}
-    }
-    
-    fun activeTabClearHistory() {
-        try {
-            val webView = webViewMap[_activeTabId.value]
-            webView?.clearHistory()
         } catch (e: Throwable) {}
     }
 
@@ -1092,18 +944,10 @@ class BrowserViewModel(
     }
 
     // Settings adjustments
-    fun updateThemeMode(mode: String, activity: android.app.Activity? = null) {
+    fun updateThemeMode(mode: String) {
         viewModelScope.launch {
-            val modeInt = when (mode) {
-                "LIGHT" -> 1
-                "DARK" -> 2
-                else -> 0
-            }
-            com.example.util.PreferenceHelper.themeMode = modeInt
             val current = repository.getSettings()
             repository.saveSettings(current.copy(themeMode = mode))
-            com.example.BrowserApplication.applyThemeMode(modeInt)
-            activity?.recreate()
         }
     }
 
@@ -1128,16 +972,6 @@ class BrowserViewModel(
         }
     }
 
-    fun updateTextSize(size: Float) {
-        com.example.util.PreferenceHelper.textSize = size
-        webViewMap.values.forEach { applyWebSettings(it) }
-    }
-
-    fun updatePageZoom(zoom: Int) {
-        com.example.util.PreferenceHelper.pageZoom = zoom
-        webViewMap.values.forEach { applyWebSettings(it) }
-    }
-
     fun updateSearchEngine(engine: String, context: android.content.Context) {
         viewModelScope.launch {
             val current = repository.getSettings()
@@ -1146,17 +980,12 @@ class BrowserViewModel(
                 "Bing" -> "https://www.bing.com/"
                 "Yahoo" -> "https://www.yahoo.com/"
                 "DuckDuckGo" -> "https://duckduckgo.com/"
-                "Baidu" -> "https://www.baidu.com/"
                 "search.stormx.ninja" -> "https://search.stormx.ninja/"
-                else -> {
-                    if (engine.startsWith("http")) engine else "https://search.stormx.ninja/"
-                }
+                else -> "https://search.stormx.ninja/"
             }
             // Update the stateflow directly to prevent the race condition
             // where navigateActiveTab uses the OLD searchEngine since repository flow hasn't emitted yet.
             val updatedSettings = current.copy(searchEngine = engine, homeUrl = newHomeUrl)
-            com.example.util.PreferenceHelper.searchEngine = engine
-            com.example.util.PreferenceHelper.homePage = newHomeUrl
             repository.saveSettings(updatedSettings)
             
             // Give Flow a tiny delay to update Or you can just update the home page
@@ -1165,51 +994,10 @@ class BrowserViewModel(
         }
     }
 
-    fun updateLanguage(lang: String, activity: android.app.Activity? = null) {
+    fun updateLanguage(lang: String) {
         viewModelScope.launch {
-            com.example.util.PreferenceHelper.language = lang
             val current = repository.getSettings()
             repository.saveSettings(current.copy(language = lang))
-            if (android.os.Build.VERSION.SDK_INT >= 33) {
-                val locale = when (lang) {
-                    "简体中文" -> java.util.Locale.SIMPLIFIED_CHINESE
-                    "Español" -> java.util.Locale("es")
-                    "Deutsch" -> java.util.Locale("de")
-                    "Français" -> java.util.Locale("fr")
-                    "Italiano" -> java.util.Locale("it")
-                    "日本語" -> java.util.Locale.JAPANESE
-                    "한국어" -> java.util.Locale.KOREAN
-                    "Русский" -> java.util.Locale("ru")
-                    "Português" -> java.util.Locale("pt")
-                    "Hindi" -> java.util.Locale("hi")
-                    "Arabic" -> java.util.Locale("ar")
-                    "Türkçe" -> java.util.Locale("tr")
-                    "Nederlands" -> java.util.Locale("nl")
-                    "Polski" -> java.util.Locale("pl")
-                    "ภาษาไทย" -> java.util.Locale("th")
-                    "Bahasa Indonesia" -> java.util.Locale("id")
-                    "Tiếng Việt" -> java.util.Locale("vi")
-                    "Svenska" -> java.util.Locale("sv")
-                    "Ελληνικά" -> java.util.Locale("el")
-                    "Dansk" -> java.util.Locale("da")
-                    "Suomi" -> java.util.Locale("fi")
-                    "Norsk" -> java.util.Locale("no")
-                    "Čeština" -> java.util.Locale("cs")
-                    "Magyar" -> java.util.Locale("hu")
-                    "Română" -> java.util.Locale("ro")
-                    "Українська" -> java.util.Locale("uk")
-                    "עברית" -> java.util.Locale("iw")
-                    "Bahasa Melayu" -> java.util.Locale("ms")
-                    "Filipino" -> java.util.Locale("fil")
-                    "Slovenčina" -> java.util.Locale("sk")
-                    "Български" -> java.util.Locale("bg")
-                    "Hrvatski" -> java.util.Locale("hr")
-                    "Srpski" -> java.util.Locale("sr")
-                    else -> java.util.Locale("en")
-                }
-                activity?.getSystemService(android.app.LocaleManager::class.java)?.applicationLocales = android.os.LocaleList(locale)
-            }
-            activity?.recreate()
         }
     }
 
@@ -1308,7 +1096,7 @@ class BrowserViewModel(
                     // Polling tracking job in IO coroutine to monitor raw bytes and compute speed in real-time
                     viewModelScope.launch(Dispatchers.IO) {
                         var isRunning = true
-                        var previousBytes = 0L
+                        var previousBytes = -1L
                         var lastTime = System.currentTimeMillis()
                         
                         // Set status to DOWNLOADING in RoomDB
@@ -1338,7 +1126,11 @@ class BrowserViewModel(
                                 val currentTime = System.currentTimeMillis()
                                 val timeDelta = (currentTime - lastTime) / 1000f
                                 
-                                val speed = if (timeDelta >= 0.5f) {
+                                val speed = if (previousBytes == -1L) {
+                                    previousBytes = bytesDownloaded
+                                    lastTime = currentTime
+                                    null
+                                } else if (timeDelta >= 0.5f) {
                                     val calc = ((bytesDownloaded - previousBytes) / timeDelta).toLong()
                                     lastTime = currentTime
                                     previousBytes = bytesDownloaded
@@ -1450,11 +1242,16 @@ class BrowserViewModel(
     }
 
     private fun formatSpeed(bytesPerSecond: Long): String {
-        if (bytesPerSecond <= 0) return "0 B/s"
-        val kb = bytesPerSecond / 1024f
-        if (kb < 1024) return String.format(java.util.Locale.US, "%.1f KB/s", kb)
-        val mb = kb / 1024f
-        return String.format(java.util.Locale.US, "%.1f MB/s", mb)
+        if (bytesPerSecond < 0) return "0 B/s"
+        val kb = bytesPerSecond / 1024.0
+        val mb = kb / 1024.0
+        val gb = mb / 1024.0
+        return when {
+            gb >= 1.0 -> String.format(java.util.Locale.US, "%.2f GB/s", gb)
+            mb >= 1.0 -> String.format(java.util.Locale.US, "%.1f MB/s", mb)
+            kb >= 1.0 -> String.format(java.util.Locale.US, "%.1f KB/s", kb)
+            else -> "$bytesPerSecond B/s"
+        }
     }
 
     private fun formatEta(seconds: Long): String {

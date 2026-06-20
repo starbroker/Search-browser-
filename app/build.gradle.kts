@@ -13,9 +13,9 @@ import org.gradle.api.file.RegularFileProperty
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.google.devtools.ksp)
-    alias(libs.plugins.roborazzi)
-    alias(libs.plugins.secrets)
+  alias(libs.plugins.google.devtools.ksp)
+  alias(libs.plugins.roborazzi)
+  alias(libs.plugins.secrets)
 }
 
 android {
@@ -23,11 +23,11 @@ android {
   compileSdk = 35
 
   defaultConfig {
-    applicationId = "com.aistudio.aetherbrowser.qwexza"
+    applicationId = "com.aistudio.stormbrowser.kytrqz"
     minSdk = 24
     targetSdk = 35
-    versionCode = 5
-    versionName = "2.1.0"
+    versionCode = 3
+    versionName = "1.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -93,7 +93,6 @@ secrets {
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
-  implementation("androidx.appcompat:appcompat:1.6.1")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
@@ -110,21 +109,13 @@ dependencies {
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
   implementation("androidx.webkit:webkit:1.11.0")
-  // implementation(libs.androidx.datastore.preferences)
+  implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
-  // implementation(libs.androidx.navigation.compose)
+  implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
-  implementation(libs.haze)
-  
-  // Security
-  implementation("androidx.security:security-crypto-ktx:1.1.0-alpha06")
-  
-  // Browser logic (Markdown parsing for changelog)
-  implementation("io.noties.markwon:core:4.6.2")
-  
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)
@@ -153,4 +144,56 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
+}
+
+abstract class DownloadAppIconTask : DefaultTask() {
+    @get:Input
+    abstract val urlString: Property<String>
+
+    @get:OutputFile
+    abstract val outputFile: RegularFileProperty
+
+    init {
+        outputs.upToDateWhen { outputFile.get().asFile.exists() }
+    }
+
+    @TaskAction
+    fun download() {
+        val baseToken = "AVvXsEj_FA4kHg1D6afKxwmVnlPQcg8epgljK"
+        val remainingToken = "9cQv7uja07Yaq1RghGLJClag2tRVgahak1TOTV53pu7RXgl_ngFiOP_nR4ey0P-qzJgE39JQKon6FpwCLlH9p7DWJzFbsGeykJIY4GZ87k_UWpn7zKDrG5eOX4F10MCSh_Yf3Q3bv8aIbzR1AH1dB0xqfPEA"
+        val variations = listOf("-", "--", "---", "_", "__", "hyphenhyphen", "", "-_")
+        for (v in variations) {
+            val candidateUrl = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/${baseToken}${v}${remainingToken}/s256/favicon-2.png"
+            try {
+                val url = URI(candidateUrl).toURL()
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+                val code = connection.responseCode
+                println("Candidate variation '$v' returned status code: $code")
+                if (code == 200) {
+                    val destinationFile = outputFile.get().asFile
+                    if (!destinationFile.parentFile.exists()) {
+                        destinationFile.parentFile.mkdirs()
+                    }
+                    destinationFile.writeBytes(url.readBytes())
+                    println("Successfully downloaded app icon using variation '$v' to ${destinationFile.absolutePath}!")
+                    return
+                }
+            } catch (e: Exception) {
+                println("Candidate variation '$v' threw error: $e")
+            }
+        }
+        println("Error: None of the candidate variations for app icon succeeded.")
+    }
+}
+
+tasks.register<DownloadAppIconTask>("downloadAppIcon") {
+    urlString.set("https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEj_FA4kHg1D6afKxwmVnlPQcg8epgljKh--9cQv7uja07Yaq1RghGLJClag2tRVgahak1TOTV53pu7RXgl_ngFiOP_nR4ey0P-qzJgE39JQKon6FpwCLlH9p7DWJzFbsGeykJIY4GZ87k_UWpn7zKDrG5eOX4F10MCSh_Yf3Q3bv8aIbzR1AH1dB0xqfPEA/s256/favicon-2.png")
+    outputFile.set(layout.projectDirectory.file("src/main/res/drawable/app_icon_custom.png"))
+}
+
+tasks.named("preBuild") {
+    dependsOn("downloadAppIcon")
 }

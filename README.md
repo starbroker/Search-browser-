@@ -1,6 +1,6 @@
-# Aether Browser
+# Search Minimalist Web Browser
 
-A next-generation Android browser with fluid color gradients, frosted glass UI, and iOS-level interaction smoothness. Built using Kotlin and Jetpack Compose.
+A premium minimalist web browser application built using Kotlin and Jetpack Compose, featuring lightning-fast secure lookup under the Hood.
 
 ---
 

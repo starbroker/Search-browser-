@@ -1,9 +1,8 @@
 package com.example
 
 import android.app.Application
-import android.content.Context
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,37 +18,8 @@ import com.example.data.BrowserRepository
 import com.example.ui.BrowserScreen
 import com.example.ui.BrowserViewModel
 import com.example.ui.theme.SearchAppTheme
-import com.example.util.PreferenceHelper
-import android.content.ContextWrapper
-import android.content.res.Configuration
-import android.os.LocaleList
-import java.util.Locale
 
-class MainActivity : AppCompatActivity() {
-    override fun attachBaseContext(newBase: Context) {
-        PreferenceHelper.init(newBase)
-        val language = PreferenceHelper.language
-        val locale = when (language) {
-            "简体中文" -> Locale.SIMPLIFIED_CHINESE
-            "Español" -> Locale("es")
-            "Deutsch" -> Locale("de")
-            "Français" -> Locale("fr")
-            else -> Locale("en") // English (US)
-        }
-        val config = Configuration(newBase.resources.configuration)
-        
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            val localeList = LocaleList(locale)
-            LocaleList.setDefault(localeList)
-            config.setLocales(localeList)
-        } else {
-            Locale.setDefault(locale)
-            config.setLocale(locale)
-        }
-        val context = newBase.createConfigurationContext(config)
-        super.attachBaseContext(context)
-    }
-
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
