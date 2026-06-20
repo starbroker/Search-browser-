@@ -58,7 +58,6 @@ class BrowserViewModel(
     val forceSimulatedMode: StateFlow<Boolean> = _forceSimulatedMode.asStateFlow()
 
     private fun isEmulator(): Boolean {
-        return true
         val finger = android.os.Build.FINGERPRINT.lowercase()
         val model = android.os.Build.MODEL.lowercase()
         val brand = android.os.Build.BRAND.lowercase()
@@ -67,7 +66,7 @@ class BrowserViewModel(
         val hardware = android.os.Build.HARDWARE.lowercase()
         val board = android.os.Build.BOARD.lowercase()
         val manufacturer = android.os.Build.MANUFACTURER.lowercase()
-        
+
         return finger.startsWith("generic") ||
                 finger.startsWith("unknown") ||
                 finger.contains("test-keys") ||
@@ -510,10 +509,13 @@ class BrowserViewModel(
                 builtInZoomControls = true
                 displayZoomControls = false
                 mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                mediaPlaybackRequiresUserGesture = true
                 setGeolocationEnabled(true)
                 allowFileAccess = false
                 allowContentAccess = false
+                cacheMode = WebSettings.LOAD_DEFAULT
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    safeBrowsingEnabled = true
+                }
             }
             
             // Allow cookies

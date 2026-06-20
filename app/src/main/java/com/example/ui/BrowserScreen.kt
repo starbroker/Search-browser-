@@ -244,7 +244,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
         }
     }
     
-    val isAnyDrawerOpen = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showShield || showMenuDrawer
+    val isAnyDrawerOpen = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showShield || showMenuDrawer || imageDownloadProposal != null || permissionProposal != null || showOsSettingsRedirect
 
     var isSearchFocused by remember { mutableStateOf(false) }
 
@@ -340,11 +340,11 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
                 val blurRadius by androidx.compose.animation.core.animateDpAsState(
-                    targetValue = if (isAnyDrawerOpen) 32.dp else 0.dp,
+                    targetValue = if (isAnyDrawerOpen) 16.dp else 0.dp,
                     animationSpec = androidx.compose.animation.core.tween(300),
                     label = "baseBlur"
                 )
-                Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
+                Box(modifier = Modifier.fillMaxSize().then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)) {
                     if (isTablet) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         AnimatedVisibility(
@@ -954,40 +954,55 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 )
             }
 
-            permissionProposal?.let { proposal ->
-                val involvesCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
-                val involvesMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
-                val involvesLocation = proposal.geoCallback != null
-                
-                val permissionsToRequest = mutableListOf<String>()
-                if (involvesCamera) permissionsToRequest.add(android.Manifest.permission.CAMERA)
-                if (involvesMic) permissionsToRequest.add(android.Manifest.permission.RECORD_AUDIO)
-                if (involvesLocation) {
-                    permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                    permissionsToRequest.add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = permissionProposal != null,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut()
+            ) {
+                var lastProposal by remember { mutableStateOf<BrowserViewModel.PermissionProposal?>(null) }
+                LaunchedEffect(permissionProposal) {
+                    if (permissionProposal != null) lastProposal = permissionProposal
                 }
 
-                var osPermissionsGranted by remember(osPermissionCheckTrigger, permissionsToRequest) { 
-                    mutableStateOf(permissionsToRequest.all { 
-                        androidx.core.content.ContextCompat.checkSelfPermission(context, it) == android.content.pm.PackageManager.PERMISSION_GRANTED 
-                    }) 
-                }
+                lastProposal?.let { proposal ->
+                    val involvesCamera = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+                    val involvesMic = proposal.resourcesNeeded.contains(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                    val involvesLocation = proposal.geoCallback != null
+                    
+                    val permissionsToRequest = mutableListOf<String>()
+                    if (involvesCamera) permissionsToRequest.add(android.Manifest.permission.CAMERA)
+                    if (involvesMic) permissionsToRequest.add(android.Manifest.permission.RECORD_AUDIO)
+                    if (involvesLocation) {
+                        permissionsToRequest.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                        permissionsToRequest.add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                    }
 
-                // If OS permissions are not granted, show interstitial
-                if (!osPermissionsGranted && permissionsToRequest.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.4f))
-                            .clickable(enabled = false) {},
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(0.85f),
-                            shape = RoundedCornerShape(24.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 6.dp
+                    var osPermissionsGranted by remember(osPermissionCheckTrigger, permissionsToRequest) { 
+                        mutableStateOf(permissionsToRequest.all { 
+                            androidx.core.content.ContextCompat.checkSelfPermission(context, it) == android.content.pm.PackageManager.PERMISSION_GRANTED 
+                        }) 
+                    }
+
+                    // If OS permissions are not granted, show interstitial
+                    if (!osPermissionsGranted && permissionsToRequest.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.4f))
+                                .clickable(enabled = false) {},
+                            contentAlignment = Alignment.Center
                         ) {
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = permissionProposal != null,
+                                enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it / 2 }) + androidx.compose.animation.scaleIn(initialScale = 0.9f),
+                                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it / 2 }) + androidx.compose.animation.scaleOut(targetScale = 0.9f)
+                            ) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(0.85f),
+                                    shape = RoundedCornerShape(24.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    tonalElevation = 6.dp
+                                ) {
                             Column(
                                 modifier = Modifier.padding(24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
@@ -1028,6 +1043,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             }
                         }
                     }
+                }
                 } else {
                     // OS permission is granted, show glass sheet!
                     val backgroundColor = if (isDark) Color(0x33FFFFFF) else Color(0x26000000)
@@ -1041,6 +1057,11 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             .clickable { viewModel.handlePermissionProposal(false) }, // dismiss out of bounds blocks
                         contentAlignment = Alignment.BottomCenter
                     ) {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = permissionProposal != null,
+                            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + androidx.compose.animation.fadeIn(),
+                            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+                        ) {
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1138,11 +1159,13 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 }
                             }
                         }
+                        }
                     }
                 }
             }
         }
     }
+}
 }
 }
 
@@ -3173,42 +3196,68 @@ fun SettingsSheet(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (showAppearancePage) {
-                AppearanceSubPage(
-                    viewModel = viewModel,
-                    settings = settings,
-                    activeFont = activeFont,
-                    isDark = isDark,
-                    onBack = { showAppearancePage = false }
-                )
-            } else if (showSitePermissionsPage) {
-                SitePermissionsSubPage(
-                    viewModel = viewModel,
-                    settings = settings,
-                    activeFont = activeFont,
-                    isDark = isDark,
-                    onBack = { showSitePermissionsPage = false }
-                )
-            } else if (showSearchEnginePage) {
-                SearchEngineSubPage(
-                    viewModel = viewModel,
-                    settings = settings,
-                    activeFont = activeFont,
-                    isDark = isDark,
-                    onBack = { showSearchEnginePage = false }
-                )
-            } else if (showLanguagePage) {
-                LanguageSubPage(
-                    viewModel = viewModel,
-                    settings = settings,
-                    activeFont = activeFont,
-                    isDark = isDark,
-                    onBack = { showLanguagePage = false }
-                )
-            } else {
+        Column(modifier = Modifier.fillMaxSize()) {
+            androidx.compose.animation.AnimatedContent(
+                modifier = Modifier.weight(1f),
+                targetState = when {
+                    showAppearancePage -> "appearance"
+                    showSitePermissionsPage -> "site_permissions"
+                    showSearchEnginePage -> "search_engine"
+                    showLanguagePage -> "language"
+                    else -> "main"
+                },
+                transitionSpec = {
+                    if (targetState != "main" && initialState == "main") {
+                        (androidx.compose.animation.slideInHorizontally { width -> width } + androidx.compose.animation.fadeIn()).togetherWith(androidx.compose.animation.slideOutHorizontally { width -> -width } + androidx.compose.animation.fadeOut())
+                    } else if (targetState == "main" && initialState != "main") {
+                        (androidx.compose.animation.slideInHorizontally { width -> -width } + androidx.compose.animation.fadeIn()).togetherWith(androidx.compose.animation.slideOutHorizontally { width -> width } + androidx.compose.animation.fadeOut())
+                    } else {
+                        androidx.compose.animation.fadeIn().togetherWith(androidx.compose.animation.fadeOut())
+                    }
+                },
+                label = "SettingsNav"
+            ) { state ->
+                Column(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    when (state) {
+                        "appearance" -> {
+                        AppearanceSubPage(
+                            viewModel = viewModel,
+                            settings = settings,
+                            activeFont = activeFont,
+                            isDark = isDark,
+                            onBack = { showAppearancePage = false }
+                        )
+                    }
+                    "site_permissions" -> {
+                        SitePermissionsSubPage(
+                            viewModel = viewModel,
+                            settings = settings,
+                            activeFont = activeFont,
+                            isDark = isDark,
+                            onBack = { showSitePermissionsPage = false }
+                        )
+                    }
+                    "search_engine" -> {
+                        SearchEngineSubPage(
+                            viewModel = viewModel,
+                            settings = settings,
+                            activeFont = activeFont,
+                            isDark = isDark,
+                            onBack = { showSearchEnginePage = false }
+                        )
+                    }
+                    "language" -> {
+                        LanguageSubPage(
+                            viewModel = viewModel,
+                            settings = settings,
+                            activeFont = activeFont,
+                            isDark = isDark,
+                            onBack = { showLanguagePage = false }
+                        )
+                    }
+                    else -> {
                 // 1. Sleek Search Header (Top-bar)
                 Surface(
                     color = glassCardColor(isDark),
@@ -3827,9 +3876,83 @@ fun SettingsSheet(
                     }
                 }
 
+                // About / Developer Info
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.outlinedCardColors(
+                        containerColor = if (isDark) Color.White.copy(alpha = 0.02f) else Color.Black.copy(alpha = 0.02f)
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.05f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.app_icon_custom),
+                            contentDescription = "StormBrowser Logo",
+                            modifier = Modifier.size(60.dp).clip(RoundedCornerShape(16.dp))
+                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "StormBrowser",
+                                fontFamily = activeFont,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 18.sp,
+                                color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                            )
+                            Text(
+                                text = "Developed by Himank.J",
+                                fontFamily = activeFont,
+                                fontSize = 14.sp,
+                                color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = { 
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://discord.com/invite/GaZF88eqsj"))
+                                    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF5865F2), // Discord Blurple
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.ChatBubble, // Substitute for discord icon
+                                        contentDescription = "Discord",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Join Discord", fontWeight = FontWeight.Bold, fontFamily = activeFont)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(30.dp))
-            }
-        }
+            } // closes LazyColumn
+        } // closes else ->
+        } // closes when
+        } // closes Column
+        } // closes AnimatedContent
 
             // 3. Floating Bottom Navigation Bar matching the other immersive pages
             Row(
@@ -3923,10 +4046,10 @@ fun SettingsSheet(
                         }
                     }
                 }
-            }
-        }
-    }
-}
+            } // closes Row (Bottom Nav Bar)
+        } // closes Column
+    } // closes Surface (SettingsSheet)
+} // closes SettingsSheet function
 
 @Composable
 fun ColumnScope.AppearanceSubPage(
