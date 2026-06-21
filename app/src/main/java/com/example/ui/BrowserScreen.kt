@@ -140,9 +140,9 @@ enum class LayoutDensity(
     val barHeight: Dp,
     val fontOffset: Float
 ) {
-    COMPACT(6.dp, 4.dp, 48.dp, -1.5f),
-    MODERATE(12.dp, 8.dp, 58.dp, 0f),
-    COMFORTABLE(18.dp, 12.dp, 68.dp, 2f)
+    COMPACT(6.dp, 4.dp, 46.dp, -1.5f),
+    MODERATE(12.dp, 8.dp, 56.dp, 0f),
+    COMFORTABLE(18.dp, 12.dp, 66.dp, 2f)
 }
 
 @Composable
@@ -1247,7 +1247,7 @@ fun BrowserHeader(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .height(42.dp)
+                    .height(40.dp)
                     .clip(RoundedCornerShape(24.dp))
                     .background(if (isDark) Color(0x33000000) else Color(0x12000000))
                     .border(
@@ -6773,24 +6773,7 @@ fun LanguageSubPage(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val allLanguages = listOf(
-        "English (US)", "English (UK)", "简体中文", "繁體中文", "Español", "Deutsch", "Français", "Italiano", "日本語", 
-        "Afrikaans", "Shqip (Albanian)", "አማርኛ (Amharic)", "العربية (Arabic)", "Հայերեն (Armenian)", "Azərbaycan dili (Azerbaijani)", 
-        "Euskara (Basque)", "Беларуская (Belarusian)", "বাংলা (Bengali)", "Bosanski (Bosnian)", "Български (Bulgarian)", 
-        "Català (Catalan)", "Cebuano", "Chichewa", "Corsu (Corsican)", "Hrvatski (Croatian)", "Čeština (Czech)", "Dansk (Danish)", 
-        "Nederlands (Dutch)", "Esperanto", "Eesti (Estonian)", "Filipino", "Suomi (Finnish)", "Frysk (Frisian)", "Galego (Galician)", 
-        "ქართული (Georgian)", "Ελληνικά (Greek)", "ગુજરાતી (Gujarati)", "Kreyòl ayisyen (Haitian Creole)", "Hausa", "ʻŌlelo Hawaiʻi (Hawaiian)", 
-        "עברית (Hebrew)", "हिन्दी (Hindi)", "Hmong", "Magyar (Hungarian)", "Íslenska (Icelandic)", "Igbo", "Bahasa Indonesia (Indonesian)", 
-        "Gaeilge (Irish)", "Basa Jawa (Javanese)", "ಕನ್ನಡ (Kannada)", "Қазақ тілі (Kazakh)", "ខ្មែរ (Khmer)", "Kinyarwanda", 
-        "한국어 (Korean)", "Kurdî (Kurdish)", "Кыргызча (Kyrgyz)", "ລາວ (Lao)", "Latina (Latin)", "Latviešu (Latvian)", 
-        "Lietuvių (Lithuanian)", "Lëtzebuergesch (Luxembourgish)", "Македонски (Macedonian)", "Malagasy", "Bahasa Melayu (Malay)", 
-        "മലയാളം (Malayalam)", "Malti (Maltese)", "Māori", "मराठी (Marathi)", "Монгол (Mongolian)", "ဗမာစာ (Burmese)", "नेपाली (Nepali)", 
-        "Norsk (Norwegian)", "ଓଡ଼ିଆ (Odia)", "پښتو (Pashto)", "فارسی (Persian)", "Polski (Polish)", "Português (Portuguese)", 
-        "ਪੰਜਾਬੀ (Punjabi)", "Română (Romanian)", "Русский (Russian)", "Gagana fa'a Sāmoa (Samoan)", "Gàidhlig (Scots Gaelic)", 
-        "Српски (Serbian)", "Sesotho", "Shona", "سنڌي (Sindhi)", "සිංහල (Sinhala)", "Slovenčina (Slovak)", "Slovenščina (Slovenian)", 
-        "Soomaali (Somali)", "Basa Sunda (Sundanese)", "Kiswahili (Swahili)", "Svenska (Swedish)", "Тоҷикӣ (Tajik)", "தமிழ் (Tamil)", 
-        "Татар (Tatar)", "తెలుగు (Telugu)", "ไทย (Thai)", "Türkçe (Turkish)", "Türkmen (Turkmen)", "Українська (Ukrainian)", 
-        "اردو (Urdu)", "ئۇيغۇرچە (Uyghur)", "O'zbek (Uzbek)", "Tiếng Việt (Vietnamese)", "Cymraeg (Welsh)", "isiXhosa (Xhosa)", 
-        "ייִדיש (Yiddish)", "Yorùbá", "isiZulu (Zulu)"
+        "English (US)", "简体中文", "Español", "Deutsch", "Français", "Italiano", "日本語"
     )
     val filteredLanguages = allLanguages.filter { it.lowercase().contains(searchQuery.lowercase()) }
 
