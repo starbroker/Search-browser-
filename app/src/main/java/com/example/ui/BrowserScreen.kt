@@ -89,7 +89,21 @@ val LocalAppLanguage = androidx.compose.runtime.staticCompositionLocalOf { "Engl
 @Composable
 fun trans(text: String): String {
     val lang = LocalAppLanguage.current
-    return BrowserTranslator.translateText(text, lang)
+    if (lang == "English (US)" || lang == "English (UK)") return text
+    if (text.startsWith("http://") || text.startsWith("https://") || text.isBlank()) return text
+    
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var translatedText by remember(text, lang) { 
+        mutableStateOf(BrowserTranslator.getOfflineTranslation(text, lang) ?: BrowserTranslator.getMemoryCached(text, lang) ?: text) 
+    }
+    
+    LaunchedEffect(text, lang) {
+        if (BrowserTranslator.getOfflineTranslation(text, lang) == null && BrowserTranslator.getMemoryCached(text, lang) == null) {
+            translatedText = BrowserTranslator.translateAsync(context, text, lang)
+        }
+    }
+    
+    return translatedText
 }
 
 @Composable
@@ -6773,7 +6787,24 @@ fun LanguageSubPage(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val allLanguages = listOf(
-        "English (US)", "简体中文", "Español", "Deutsch", "Français", "Italiano", "日本語"
+        "English (US)", "English (UK)", "简体中文", "繁體中文", "Español", "Deutsch", "Français", "Italiano", "日本語", 
+        "Afrikaans", "Shqip (Albanian)", "አማርኛ (Amharic)", "العربية (Arabic)", "Հայերեն (Armenian)", "Azərbaycan dili (Azerbaijani)", 
+        "Euskara (Basque)", "Беларуская (Belarusian)", "বাংলা (Bengali)", "Bosanski (Bosnian)", "Български (Bulgarian)", 
+        "Català (Catalan)", "Cebuano", "Chichewa", "Corsu (Corsican)", "Hrvatski (Croatian)", "Čeština (Czech)", "Dansk (Danish)", 
+        "Nederlands (Dutch)", "Esperanto", "Eesti (Estonian)", "Filipino", "Suomi (Finnish)", "Frysk (Frisian)", "Galego (Galician)", 
+        "ქართული (Georgian)", "Ελληνικά (Greek)", "ગુજરાતી (Gujarati)", "Kreyòl ayisyen (Haitian Creole)", "Hausa", "ʻŌlelo Hawaiʻi (Hawaiian)", 
+        "עברית (Hebrew)", "हिन्दी (Hindi)", "Hmong", "Magyar (Hungarian)", "Íslenska (Icelandic)", "Igbo", "Bahasa Indonesia (Indonesian)", 
+        "Gaeilge (Irish)", "Basa Jawa (Javanese)", "ಕನ್ನಡ (Kannada)", "Қазақ тілі (Kazakh)", "ខ្មែរ (Khmer)", "Kinyarwanda", 
+        "한국어 (Korean)", "Kurdî (Kurdish)", "Кыргызча (Kyrgyz)", "ລາວ (Lao)", "Latina (Latin)", "Latviešu (Latvian)", 
+        "Lietuvių (Lithuanian)", "Lëtzebuergesch (Luxembourgish)", "Македонски (Macedonian)", "Malagasy", "Bahasa Melayu (Malay)", 
+        "മലയാളം (Malayalam)", "Malti (Maltese)", "Māori", "मराठी (Marathi)", "Монгол (Mongolian)", "ဗမာစာ (Burmese)", "नेपाली (Nepali)", 
+        "Norsk (Norwegian)", "ଓଡ଼ିଆ (Odia)", "پښتو (Pashto)", "فارسی (Persian)", "Polski (Polish)", "Português (Portuguese)", 
+        "ਪੰਜਾਬੀ (Punjabi)", "Română (Romanian)", "Русский (Russian)", "Gagana fa'a Sāmoa (Samoan)", "Gàidhlig (Scots Gaelic)", 
+        "Српски (Serbian)", "Sesotho", "Shona", "سنڌي (Sindhi)", "සිංහල (Sinhala)", "Slovenčina (Slovak)", "Slovenščina (Slovenian)", 
+        "Soomaali (Somali)", "Basa Sunda (Sundanese)", "Kiswahili (Swahili)", "Svenska (Swedish)", "Тоҷикӣ (Tajik)", "தமிழ் (Tamil)", 
+        "Татар (Tatar)", "తెలుగు (Telugu)", "ไทย (Thai)", "Türkçe (Turkish)", "Türkmen (Turkmen)", "Українська (Ukrainian)", 
+        "اردو (Urdu)", "ئۇيغۇرچە (Uyghur)", "O'zbek (Uzbek)", "Tiếng Việt (Vietnamese)", "Cymraeg (Welsh)", "isiXhosa (Xhosa)", 
+        "ייִדיש (Yiddish)", "Yorùbá", "isiZulu (Zulu)"
     )
     val filteredLanguages = allLanguages.filter { it.lowercase().contains(searchQuery.lowercase()) }
 

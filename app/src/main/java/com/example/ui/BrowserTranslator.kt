@@ -728,7 +728,80 @@ object BrowserTranslator {
         )
     )
 
-    fun translateText(text: String, lang: String): String {
+    val LANG_CODES = mapOf(
+        "English (US)" to "en", "English (UK)" to "en", "简体中文" to "zh-CN", "繁體中文" to "zh-TW", "Español" to "es", "Deutsch" to "de", "Français" to "fr", "Italiano" to "it", "日本語" to "ja",
+        "Afrikaans" to "af", "Shqip (Albanian)" to "sq", "አማርኛ (Amharic)" to "am", "العربية (Arabic)" to "ar", "Հայերեն (Armenian)" to "hy", "Azərbaycan dili (Azerbaijani)" to "az",
+        "Euskara (Basque)" to "eu", "Беларуская (Belarusian)" to "be", "বাংলা (Bengali)" to "bn", "Bosanski (Bosnian)" to "bs", "Български (Bulgarian)" to "bg",
+        "Català (Catalan)" to "ca", "Cebuano" to "ceb", "Chichewa" to "ny", "Corsu (Corsican)" to "co", "Hrvatski (Croatian)" to "hr", "Čeština (Czech)" to "cs", "Dansk (Danish)" to "da",
+        "Nederlands (Dutch)" to "nl", "Esperanto" to "eo", "Eesti (Estonian)" to "et", "Filipino" to "tl", "Suomi (Finnish)" to "fi", "Frysk (Frisian)" to "fy", "Galego (Galician)" to "gl",
+        "ქართული (Georgian)" to "ka", "Ελληνικά (Greek)" to "el", "ગુજરાતી (Gujarati)" to "gu", "Kreyòl ayisyen (Haitian Creole)" to "ht", "Hausa" to "ha", "ʻŌlelo Hawaiʻi (Hawaiian)" to "haw",
+        "עברית (Hebrew)" to "iw", "हिन्दी (Hindi)" to "hi", "Hmong" to "hmn", "Magyar (Hungarian)" to "hu", "Íslenska (Icelandic)" to "is", "Igbo" to "ig", "Bahasa Indonesia (Indonesian)" to "id",
+        "Gaeilge (Irish)" to "ga", "Basa Jawa (Javanese)" to "jw", "ಕನ್ನಡ (Kannada)" to "kn", "Қазақ тілі (Kazakh)" to "kk", "ខ្មែរ (Khmer)" to "km", "Kinyarwanda" to "rw",
+        "한국어 (Korean)" to "ko", "Kurdî (Kurdish)" to "ku", "Кыргызча (Kyrgyz)" to "ky", "ລາວ (Lao)" to "lo", "Latina (Latin)" to "la", "Latviešu (Latvian)" to "lv",
+        "Lietuvių (Lithuanian)" to "lt", "Lëtzebuergesch (Luxembourgish)" to "lb", "Македонски (Macedonian)" to "mk", "Malagasy" to "mg", "Bahasa Melayu (Malay)" to "ms",
+        "മലയാളം (Malayalam)" to "ml", "Malti (Maltese)" to "mt", "Māori" to "mi", "मराठी (Marathi)" to "mr", "Монгол (Mongolian)" to "mn", "ဗမာစာ (Burmese)" to "my", "नेपाली (Nepali)" to "ne",
+        "Norsk (Norwegian)" to "no", "ଓଡ଼ିଆ (Odia)" to "or", "پښتو (Pashto)" to "ps", "فارسی (Persian)" to "fa", "Polski (Polish)" to "pl", "Português (Portuguese)" to "pt",
+        "ਪੰਜਾਬੀ (Punjabi)" to "pa", "Română (Romanian)" to "ro", "Русский (Russian)" to "ru", "Gagana fa'a Sāmoa (Samoan)" to "sm", "Gàidhlig (Scots Gaelic)" to "gd",
+        "Српски (Serbian)" to "sr", "Sesotho" to "st", "Shona" to "sn", "سنڌي (Sindhi)" to "sd", "සිංහල (Sinhala)" to "si", "Slovenčina (Slovak)" to "sk", "Slovenščina (Slovenian)" to "sl",
+        "Soomaali (Somali)" to "so", "Basa Sunda (Sundanese)" to "su", "Kiswahili (Swahili)" to "sw", "Svenska (Swedish)" to "sv", "Тоҷикӣ (Tajik)" to "tg", "தமிழ் (Tamil)" to "ta",
+        "Татар (Tatar)" to "tt", "తెలుగు (Telugu)" to "te", "ไทย (Thai)" to "th", "Türkçe (Turkish)" to "tr", "Türkmen (Turkmen)" to "tk", "Українська (Ukrainian)" to "uk",
+        "اردو (Urdu)" to "ur", "ئۇيغۇرچە (Uyghur)" to "ug", "O'zbek (Uzbek)" to "uz", "Tiếng Việt (Vietnamese)" to "vi", "Cymraeg (Welsh)" to "cy", "isiXhosa (Xhosa)" to "xh",
+        "ייִדיש (Yiddish)" to "yi", "Yorùbá" to "yo", "isiZulu (Zulu)" to "zu"
+    )
+
+    private val memoryCache = mutableMapOf<Pair<String, String>, String>()
+
+    fun getMemoryCached(text: String, lang: String): String? {
+        val key = Pair(text, lang)
+        return memoryCache[key]
+    }
+
+    suspend fun translateAsync(context: android.content.Context, text: String, lang: String): String {
+        if (lang == "English (US)" || lang == "English (UK)") return text
+        
+        val offline = getOfflineTranslation(text, lang)
+        if (offline != null) return offline
+
+        val langCode = LANG_CODES[lang] ?: "en"
+        val key = Pair(text, lang)
+        
+        memoryCache[key]?.let { return it }
+
+        val prefs = context.getSharedPreferences("i18n_$langCode", android.content.Context.MODE_PRIVATE)
+        val cached = prefs.getString(key.first, null)
+        if (cached != null) {
+            memoryCache[key] = cached
+            return cached
+        }
+
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val urlString = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=$langCode&dt=t&q=${java.net.URLEncoder.encode(text, "UTF-8")}"
+                val url = java.net.URL(urlString)
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                
+                val jsonArray = org.json.JSONArray(response)
+                val parts = jsonArray.getJSONArray(0)
+                val sb = java.lang.StringBuilder()
+                for (i in 0 until parts.length()) {
+                    sb.append(parts.getJSONArray(i).getString(0))
+                }
+                val translated = sb.toString()
+                
+                memoryCache[key] = translated
+                prefs.edit().putString(key.first, translated).apply()
+                translated
+            } catch (e: Exception) {
+                text
+            }
+        }
+    }
+
+    fun getOfflineTranslation(text: String, lang: String): String? {
         if (lang == "English (US)") return text
         val trimText = text.trim()
         val hasColon = trimText.endsWith(":")
@@ -737,7 +810,7 @@ object BrowserTranslator {
         // Handle dynamic string Active state
         if (trimText.startsWith("Active: ")) {
             val value = trimText.removePrefix("Active: ")
-            val translatedValue = translateText(value, lang)
+            val translatedValue = getOfflineTranslation(value, lang) ?: value
             val prefix = if (lang == "简体中文") "当前" else if (lang == "Español") "Activo" else if (lang == "Deutsch") "Aktiv" else if (lang == "Français") "Actif" else "Active"
             return "$prefix: $translatedValue"
         }
@@ -752,7 +825,7 @@ object BrowserTranslator {
                 "Español" -> "Anuncios bloqueados en esta sesión: $sessionCount (Total: $totalCount)"
                 "Deutsch" -> "$sessionCount Anzeigen in dieser Sitzung blockiert (Gesamt: $totalCount)"
                 "Français" -> "$sessionCount publicités bloquées cette session (Total: $totalCount)"
-                else -> text
+                else -> null
             }
         }
 
@@ -766,7 +839,7 @@ object BrowserTranslator {
                 "Español" -> "Rastreadores/cookies bloqueados en esta sesión: $sessionCount (Total: $totalCount)"
                 "Deutsch" -> "$sessionCount Tracker/Cookies in dieser Sitzung blockiert (Gesamt: $totalCount)"
                 "Français" -> "$sessionCount traqueurs/cookies bloqués cette session (Total: $totalCount)"
-                else -> text
+                else -> null
             }
         }
 
@@ -801,14 +874,17 @@ object BrowserTranslator {
             return if (hasColon) "$translated:" else translated
         }
 
-        // Fallback search with case-insensitive matcher
-        val map = TRANSLATIONS[lang] ?: return text
+        val map = TRANSLATIONS[lang] ?: return null
         for ((key, value) in map) {
             if (key.equals(lookupKey, ignoreCase = true)) {
                 return if (hasColon) "$value:" else value
             }
         }
 
-        return text
+        return null
+    }
+
+    fun translateText(text: String, lang: String): String {
+        return getOfflineTranslation(text, lang) ?: text
     }
 }
