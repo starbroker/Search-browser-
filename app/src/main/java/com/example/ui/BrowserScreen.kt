@@ -223,6 +223,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
     val showMenuDrawer by viewModel.showMenuDrawer.collectAsState()
     val imageDownloadProposal by viewModel.imageDownloadProposal.collectAsState()
     val permissionProposal by viewModel.permissionRequestProposal.collectAsState()
+    val appRedirectProposal by viewModel.appRedirectProposal.collectAsState()
     
     var showOsSettingsRedirect by remember { mutableStateOf(false) }
     var osPermissionCheckTrigger by remember { mutableStateOf(0) }
@@ -258,8 +259,6 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
         }
     }
     
-    val isAnyDrawerOpen = showTabs || showSettings || showBookmarks || showHistory || showDownloads || showShield || showMenuDrawer || imageDownloadProposal != null || permissionProposal != null || showOsSettingsRedirect
-
     var isSearchFocused by remember { mutableStateOf(false) }
 
     var lastActiveDownloadId by remember { mutableStateOf<Int?>(null) }
@@ -353,14 +352,14 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 // Determine layout direction for navigation bar
                 val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
-                val blurRadius by androidx.compose.animation.core.animateDpAsState(
-                    targetValue = if (isAnyDrawerOpen) {
-                        if (settings.batterySaverModeEnabled) 0.dp else 16.dp
-                    } else 0.dp,
+                val isMainPopupOpen = appRedirectProposal != null || showOsSettingsRedirect || imageDownloadProposal != null || permissionProposal != null
+                val baseBlurRadius by androidx.compose.animation.core.animateDpAsState(
+                    targetValue = if (isMainPopupOpen && !settings.batterySaverModeEnabled) 16.dp else 0.dp,
                     animationSpec = if (settings.batterySaverModeEnabled) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(300),
                     label = "baseBlur"
                 )
-                Box(modifier = Modifier.fillMaxSize().blur(blurRadius)) {
+                
+                Box(modifier = Modifier.fillMaxSize().blur(baseBlurRadius, edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)) {
                     if (isTablet) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         AnimatedVisibility(
@@ -607,15 +606,14 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 }
                 } // End Blur Box
 
-            val isModalDrawerOpen = showShield || showMenuDrawer || imageDownloadProposal != null || permissionProposal != null || showOsSettingsRedirect
+            val isMainPopupOpenForModal = appRedirectProposal != null || showOsSettingsRedirect || imageDownloadProposal != null || permissionProposal != null
             val modalBlurRadius by androidx.compose.animation.core.animateDpAsState(
-                targetValue = if (isModalDrawerOpen) {
-                    if (settings.batterySaverModeEnabled) 0.dp else 16.dp
-                } else 0.dp,
+                targetValue = if (isMainPopupOpenForModal && !settings.batterySaverModeEnabled) 16.dp else 0.dp,
                 animationSpec = if (settings.batterySaverModeEnabled) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(300),
                 label = "modalBlur"
             )
-            Box(modifier = Modifier.fillMaxSize().blur(modalBlurRadius)) {
+            
+            Box(modifier = Modifier.fillMaxSize().blur(modalBlurRadius, edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)) {
             // Overlay Sheets/Dialogs triggered dynamically
             AnimatedVisibility(
                 visible = showTabs,
@@ -857,7 +855,6 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
             }
 
             // High-fidelity social redirects handler dialogue
-            val appRedirectProposal by viewModel.appRedirectProposal.collectAsState()
             appRedirectProposal?.let { proposal ->
                 AlertDialog(
                     onDismissRequest = {
@@ -869,6 +866,10 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 try {
                                     val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(proposal.url)).apply {
                                         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        val pkg = viewModel.getSocialAppPackage(proposal.appName)
+                                        if (pkg.isNotEmpty()) {
+                                            setPackage(pkg)
+                                        }
                                     }
                                     context.startActivity(intent)
                                     viewModel.appRedirectProposal.value = null
@@ -920,9 +921,10 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
+                    modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(24.dp)),
                     shape = RoundedCornerShape(24.dp),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 6.dp
+                    containerColor = glassCardColor(isDark),
+                    tonalElevation = 0.dp
                 )
             }
 
@@ -974,9 +976,10 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
+                    modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(24.dp)),
                     shape = RoundedCornerShape(24.dp),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 6.dp
+                    containerColor = glassCardColor(isDark),
+                    tonalElevation = 0.dp
                 )
             }
 
@@ -1572,7 +1575,7 @@ fun MenuDrawerSheet(
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
         containerColor = solidColor,
-        scrimColor = Color.Transparent,
+        scrimColor = BottomSheetDefaults.ScrimColor,
         tonalElevation = 10.dp,
         dragHandle = {
             BottomSheetDefaults.DragHandle(
@@ -1943,7 +1946,7 @@ fun ShieldDashboardSheet(
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         containerColor = solidColor,
-        scrimColor = Color.Transparent,
+        scrimColor = BottomSheetDefaults.ScrimColor,
         tonalElevation = 10.dp,
         dragHandle = {
             BottomSheetDefaults.DragHandle(
@@ -2685,7 +2688,7 @@ fun TabsOverviewPage(
                             modifier = Modifier.size(28.dp)
                         )
                     }
-                    IconButton(onClick = { /* Forward Action Decoration */ }) {
+                    IconButton(onClick = { viewModel.activeTabGoForward(context); onDismiss() }) {
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowRight,
                             contentDescription = "Forward Action",
@@ -4074,7 +4077,7 @@ fun SettingsSheet(
                                 modifier = Modifier.size(28.dp)
                             )
                         }
-                        IconButton(onClick = { /* Forward Decoration */ }) {
+                        IconButton(onClick = { viewModel.activeTabGoForward(context); viewModel.showSettings.value = false }) {
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowRight,
                                 contentDescription = "Forward decoration",
@@ -4807,7 +4810,7 @@ fun BookmarksPage(
                         modifier = Modifier.size(28.dp)
                     )
                 }
-                IconButton(onClick = { /* Forward Action Handled via context */ }) {
+                IconButton(onClick = { viewModel.activeTabGoForward(context); onDismiss() }) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowRight,
                         contentDescription = "Forward Action",
@@ -4902,8 +4905,8 @@ fun HistoryPage(
     if (showClearConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showClearConfirmDialog = false },
-            title = { Text("Clear All History", fontFamily = activeFont, fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to permanently delete all browsing logs?", fontFamily = activeFont) },
+            title = { Text("Clear All History", fontFamily = activeFont, fontWeight = FontWeight.Bold, color = if(isDark) Color.White else Color.Black) },
+            text = { Text("Are you sure you want to permanently delete all browsing logs?", fontFamily = activeFont, color = if(isDark) Color.White else Color.Black) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.clearBrowsingData()
@@ -4914,15 +4917,22 @@ fun HistoryPage(
             },
             dismissButton = {
                 TextButton(onClick = { showClearConfirmDialog = false }) {
-                    Text("Cancel", fontFamily = activeFont)
+                    Text("Cancel", fontFamily = activeFont, color = if(isDark) Color.White else Color.Black)
                 }
             },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = if (isDark) Color(0xFF1E1E22) else Color.White
+            modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(24.dp)),
+            shape = RoundedCornerShape(24.dp),
+            containerColor = glassCardColor(isDark)
         )
     }
 
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+
+    val popupBlurRadius by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (showClearConfirmDialog) 16.dp else 0.dp,
+        animationSpec = androidx.compose.animation.core.tween(300),
+        label = "blur"
+    )
 
     Surface(
         modifier = Modifier
@@ -4932,7 +4942,7 @@ fun HistoryPage(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().blur(popupBlurRadius, edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -5167,7 +5177,7 @@ fun HistoryPage(
                         modifier = Modifier.size(28.dp)
                     )
                 }
-                IconButton(onClick = { /* Forward Action Mock */ }) {
+                IconButton(onClick = { viewModel.activeTabGoForward(context); onDismiss() }) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowRight,
                         contentDescription = "Forward Action",
@@ -5281,13 +5291,19 @@ fun DownloadsPage(
     var itemToDelete by remember { mutableStateOf<DownloadItem?>(null) }
     var deleteFromStorage by remember { mutableStateOf(false) }
 
+    val popupBlurRadius by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (itemToDelete != null) 16.dp else 0.dp,
+        animationSpec = androidx.compose.animation.core.tween(300),
+        label = "blur"
+    )
+
     if (itemToDelete != null) {
         AlertDialog(
             onDismissRequest = { itemToDelete = null },
-            title = { Text("Delete Download", fontFamily = activeFont, fontWeight = FontWeight.Bold) },
+            title = { Text("Delete Download", fontFamily = activeFont, fontWeight = FontWeight.Bold, color = if(isDark) Color.White else Color.Black) },
             text = {
                 Column {
-                    Text("Are you sure you want to remove this download from your history?", fontFamily = activeFont)
+                    Text("Are you sure you want to remove this download from your history?", fontFamily = activeFont, color = if(isDark) Color.White else Color.Black)
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(
                         verticalAlignment = Alignment.CenterVertically, 
@@ -5297,7 +5313,7 @@ fun DownloadsPage(
                             checked = deleteFromStorage,
                             onCheckedChange = { deleteFromStorage = it }
                         )
-                        Text("Delete file from device", fontFamily = activeFont)
+                        Text("Delete file from device", fontFamily = activeFont, color = if(isDark) Color.White else Color.Black)
                     }
                 }
             },
@@ -5327,9 +5343,13 @@ fun DownloadsPage(
             },
             dismissButton = {
                 TextButton(onClick = { itemToDelete = null }) {
-                    Text("Cancel", fontFamily = activeFont)
+                    Text("Cancel", fontFamily = activeFont, color = if (isDark) Color.White else Color.Black)
                 }
-            }
+            },
+            modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(24.dp)),
+            shape = RoundedCornerShape(24.dp),
+            containerColor = glassCardColor(isDark),
+            tonalElevation = 0.dp
         )
     }
 
@@ -5341,7 +5361,7 @@ fun DownloadsPage(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().blur(popupBlurRadius, edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)) {
             // Content
             Column(
             modifier = Modifier
@@ -5614,7 +5634,7 @@ fun DownloadsPage(
             IconButton(onClick = onDismiss) {
                 Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Back", tint = textMain, modifier = Modifier.size(26.dp))
             }
-            IconButton(onClick = { }) {
+            IconButton(onClick = { viewModel.activeTabGoForward(context); onDismiss() }) {
                 Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Forward", tint = textMain, modifier = Modifier.size(26.dp))
             }
             IconButton(onClick = { 
@@ -6942,11 +6962,17 @@ fun SitePermissionsSubPage(
     
     var showResetDialog by remember { mutableStateOf(false) }
 
+    val popupBlurRadius by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (showResetDialog) 16.dp else 0.dp,
+        animationSpec = androidx.compose.animation.core.tween(300),
+        label = "blur"
+    )
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color.Transparent
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().blur(popupBlurRadius, edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)) {
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
@@ -7126,10 +7152,12 @@ fun SitePermissionsSubPage(
             dismissButton = {
                 TextButton(onClick = { showResetDialog = false }) { Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             },
-            title = { Text("Reset all permissions?", fontFamily = activeFont, fontWeight = FontWeight.Bold) },
-            text = { Text("This will clear all custom site permissions and revert to global defaults.", fontFamily = activeFont) },
+            title = { Text("Reset all permissions?", fontFamily = activeFont, fontWeight = FontWeight.Bold, color = if(isDark) Color.White else Color.Black) },
+            text = { Text("This will clear all custom site permissions and revert to global defaults.", fontFamily = activeFont, color = if(isDark) Color.White else Color.Black) },
+            modifier = Modifier.border(1.dp, glassBorderColor(isDark), RoundedCornerShape(24.dp)),
             shape = RoundedCornerShape(24.dp),
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = glassCardColor(isDark),
+            tonalElevation = 0.dp
         )
     }
 }

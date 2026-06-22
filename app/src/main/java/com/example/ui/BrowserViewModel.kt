@@ -411,6 +411,13 @@ class BrowserViewModel(
         viewModelScope.launch {
             val dbTabs = repository.getAllTabs()
             val initialSettings = repository.getSettings()
+
+            // Resume downloading tracked items
+            repository.downloadsFlow.first().forEach { dbItem ->
+                if ((dbItem.status == "DOWNLOADING" || dbItem.status == "PAUSED") && dbItem.dmId != -1L) {
+                    trackDownload(dbItem.id, dbItem.dmId, application, dbItem.fileName, dbItem.totalBytes)
+                }
+            }
             
             if (dbTabs.isEmpty()) {
                 // Create custom homepage tab to start
@@ -584,7 +591,7 @@ class BrowserViewModel(
                     }
 
                     val appName = getSocialAppName(url)
-                    if (appName != null) {
+                    if (appName != null && isAppInstalled(context, appName)) {
                         val currentProposal = appRedirectProposal.value
                         if (currentProposal?.url != url) {
                             android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -1117,6 +1124,262 @@ class BrowserViewModel(
     }
 
     // Download Handler
+    fun trackDownload(downloadId: Int, dmId: Long, context: Context, fileName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            var isRunning = true
+            var previousBytes = -1L
+            var lastTime = System.currentTimeMillis()
+            
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val channel = android.app.NotificationChannel("stormx_downloads", "StormX Downloads", android.app.NotificationManager.IMPORTANCE_LOW)
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            while (isRunning) {
+                val query = DownloadManager.Query().setFilterById(dmId)
+                val cursor = downloadManager.query(query)
+                if (cursor != null && cursor.moveToFirst()) {
+                    val bytesDownloadedColumn = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                    val totalBytesColumn = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                    val statusColumn = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+
+                    val bytesDownloaded = if (bytesDownloadedColumn != -1) cursor.getLong(bytesDownloadedColumn) else 0L
+                    val totalBytes = if (totalBytesColumn != -1) cursor.getLong(totalBytesColumn) else 0L
+                    val status = if (statusColumn != -1) cursor.getInt(statusColumn) else DownloadManager.STATUS_RUNNING
+
+                    val currentTime = System.currentTimeMillis()
+                    val timeDelta = (currentTime - lastTime) / 1000f
+                    
+                    val speed = if (previousBytes == -1L) {
+                        previousBytes = bytesDownloaded
+                        lastTime = currentTime
+                        null
+                    } else if (timeDelta >= 0.5f) {
+                        val calc = ((bytesDownloaded - previousBytes) / timeDelta).toLong()
+                        if (bytesDownloaded > previousBytes) {
+                            lastTime = currentTime
+                            previousBytes = bytesDownloaded
+                            calc
+                        } else if (timeDelta > 5.0f && status != DownloadManager.STATUS_PAUSED) {
+                            lastTime = currentTime
+                            0L
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+
+                    val activeSpeedText = if (speed != null) {
+                        val text = formatSpeed(speed)
+                        val etaText = if (speed > 0 && totalBytes > 0 && totalBytes > bytesDownloaded) formatEta((totalBytes - bytesDownloaded) / speed) else ""
+                        withContext(Dispatchers.Main) {
+                            downloadSpeeds[downloadId] = text
+                            if (etaText.isNotEmpty()) {
+                                downloadEtas[downloadId] = etaText
+                            } else {
+                                downloadEtas.remove(downloadId)
+                            }
+                        }
+                        text
+                    } else {
+                        downloadSpeeds[downloadId]
+                    }
+
+                    val progressPercent = if (totalBytes > 0) (bytesDownloaded * 100 / totalBytes).toInt() else 0
+                    val notifText = if (activeSpeedText != null && status == DownloadManager.STATUS_RUNNING) "Downloading... $activeSpeedText" else if (status == DownloadManager.STATUS_PAUSED) "Paused" else "Downloading..."
+                    
+                    val builder = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
+                        .setContentTitle(fileName)
+                        .setContentText(notifText)
+                        .setSmallIcon(android.R.drawable.stat_sys_download)
+                        .setOngoing(true)
+                        .setProgress(100, progressPercent, totalBytes <= 0)
+                        .setOnlyAlertOnce(true)
+                    
+                    notificationManager.notify(downloadId, builder.build())
+
+                    val mappedStatus = when (status) {
+                        DownloadManager.STATUS_RUNNING -> "DOWNLOADING"
+                        DownloadManager.STATUS_SUCCESSFUL -> {
+                            isRunning = false
+                            val builderDone = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
+                                .setContentTitle(fileName)
+                                .setContentText("Download Complete")
+                                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                                .setAutoCancel(true)
+                            notificationManager.notify(downloadId, builderDone.build())
+                            "COMPLETED"
+                        }
+                        DownloadManager.STATUS_FAILED -> {
+                            isRunning = false
+                            val builderFail = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
+                                .setContentTitle(fileName)
+                                .setContentText("Download Failed")
+                                .setSmallIcon(android.R.drawable.stat_notify_error)
+                                .setAutoCancel(true)
+                            notificationManager.notify(downloadId, builderFail.build())
+                            "FAILED"
+                        }
+                        DownloadManager.STATUS_PAUSED -> "PAUSED"
+                        else -> "DOWNLOADING"
+                    }
+
+                    val dbItem = repository.downloadsFlow.first().find { it.id == downloadId }
+                    if (dbItem != null) {
+                        repository.updateDownload(dbItem.copy(
+                            status = mappedStatus,
+                            downloadedBytes = bytesDownloaded,
+                            totalBytes = if (totalBytes > 0) totalBytes else dbItem.totalBytes
+                        ))
+                    }
+                } else {
+                    isRunning = false
+                }
+                cursor?.close()
+                if (isRunning) {
+                    val refreshRate = if (settings.value.batterySaverModeEnabled) 3000L else 1000L
+                    kotlinx.coroutines.delay(refreshRate)
+                }
+            }
+            
+            withContext(Dispatchers.Main) {
+                downloadSpeeds.remove(downloadId)
+                downloadEtas.remove(downloadId)
+            }
+        }
+    }
+
+    fun trackDownload(downloadId: Int, dmId: Long, context: Context, fileName: String, contentLength: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            var isRunning = true
+            var previousBytes = -1L
+            var lastTime = System.currentTimeMillis()
+            
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val channel = android.app.NotificationChannel("stormx_downloads", "StormX Downloads", android.app.NotificationManager.IMPORTANCE_LOW)
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            while (isRunning) {
+                val query = DownloadManager.Query().setFilterById(dmId)
+                val cursor = downloadManager.query(query)
+                if (cursor != null && cursor.moveToFirst()) {
+                    val bytesDownloadedColumn = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                    val totalBytesColumn = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                    val statusColumn = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+
+                    val bytesDownloaded = if (bytesDownloadedColumn != -1) cursor.getLong(bytesDownloadedColumn) else 0L
+                    val totalBytes = if (totalBytesColumn != -1) cursor.getLong(totalBytesColumn) else contentLength
+                    val status = if (statusColumn != -1) cursor.getInt(statusColumn) else DownloadManager.STATUS_RUNNING
+
+                    val currentTime = System.currentTimeMillis()
+                    val timeDelta = (currentTime - lastTime) / 1000f
+                    
+                    val speed = if (previousBytes == -1L) {
+                        previousBytes = bytesDownloaded
+                        lastTime = currentTime
+                        null
+                    } else if (timeDelta >= 0.5f) {
+                        val calc = ((bytesDownloaded - previousBytes) / timeDelta).toLong()
+                        if (bytesDownloaded > previousBytes) {
+                            lastTime = currentTime
+                            previousBytes = bytesDownloaded
+                            calc
+                        } else if (timeDelta > 5.0f && status != DownloadManager.STATUS_PAUSED) {
+                            lastTime = currentTime
+                            0L
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+
+                    val activeSpeedText = if (speed != null) {
+                        val text = formatSpeed(speed)
+                        val etaText = if (speed > 0 && totalBytes > 0 && totalBytes > bytesDownloaded) formatEta((totalBytes - bytesDownloaded) / speed) else ""
+                        withContext(Dispatchers.Main) {
+                            downloadSpeeds[downloadId] = text
+                            if (etaText.isNotEmpty()) {
+                                downloadEtas[downloadId] = etaText
+                            } else {
+                                downloadEtas.remove(downloadId)
+                            }
+                        }
+                        text
+                    } else {
+                        downloadSpeeds[downloadId]
+                    }
+
+                    val progressPercent = if (totalBytes > 0) (bytesDownloaded * 100 / totalBytes).toInt() else 0
+                    val notifText = if (activeSpeedText != null && status == DownloadManager.STATUS_RUNNING) "Downloading... $activeSpeedText" else if (status == DownloadManager.STATUS_PAUSED) "Paused" else "Downloading..."
+                    
+                    val builder = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
+                        .setContentTitle(fileName)
+                        .setContentText(notifText)
+                        .setSmallIcon(android.R.drawable.stat_sys_download)
+                        .setOngoing(true)
+                        .setProgress(100, progressPercent, totalBytes <= 0)
+                        .setOnlyAlertOnce(true)
+                    
+                    notificationManager.notify(downloadId, builder.build())
+
+                    val mappedStatus = when (status) {
+                        DownloadManager.STATUS_RUNNING -> "DOWNLOADING"
+                        DownloadManager.STATUS_SUCCESSFUL -> {
+                            isRunning = false
+                            val builderDone = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
+                                .setContentTitle(fileName)
+                                .setContentText("Download Complete")
+                                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                                .setAutoCancel(true)
+                            notificationManager.notify(downloadId, builderDone.build())
+                            "COMPLETED"
+                        }
+                        DownloadManager.STATUS_FAILED -> {
+                            isRunning = false
+                            val builderFail = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
+                                .setContentTitle(fileName)
+                                .setContentText("Download Failed")
+                                .setSmallIcon(android.R.drawable.stat_notify_error)
+                                .setAutoCancel(true)
+                            notificationManager.notify(downloadId, builderFail.build())
+                            "FAILED"
+                        }
+                        DownloadManager.STATUS_PAUSED -> "PAUSED"
+                        else -> "DOWNLOADING"
+                    }
+
+                    val dbItem = repository.downloadsFlow.first().find { it.id == downloadId }
+                    if (dbItem != null) {
+                        repository.updateDownload(dbItem.copy(
+                            status = mappedStatus,
+                            downloadedBytes = bytesDownloaded,
+                            totalBytes = if (totalBytes > 0) totalBytes else dbItem.totalBytes
+                        ))
+                    }
+                } else {
+                    isRunning = false
+                }
+                cursor?.close()
+                if (isRunning) {
+                    val refreshRate = if (settings.value.batterySaverModeEnabled) 3000L else 1000L
+                    kotlinx.coroutines.delay(refreshRate)
+                }
+            }
+            
+            withContext(Dispatchers.Main) {
+                downloadSpeeds.remove(downloadId)
+                downloadEtas.remove(downloadId)
+            }
+        }
+    }
+
     fun triggerDownload(
         url: String,
         userAgent: String?,
@@ -1173,142 +1436,17 @@ class BrowserViewModel(
                     val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                     val dmId = downloadManager.enqueue(request)
     
-                    // Polling tracking job in IO coroutine to monitor raw bytes and compute speed in real-time
-                    viewModelScope.launch(Dispatchers.IO) {
-                        var isRunning = true
-                        var previousBytes = -1L
-                        var lastTime = System.currentTimeMillis()
-                        
-                        // Set status to DOWNLOADING in RoomDB
-                        val initialItem = repository.downloadsFlow.first().find { it.id == downloadId }
-                        if (initialItem != null) {
-                            repository.updateDownload(initialItem.copy(status = "DOWNLOADING"))
-                        }
-    
-                        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                            val channel = android.app.NotificationChannel("stormx_downloads", "StormX Downloads", android.app.NotificationManager.IMPORTANCE_LOW)
-                            notificationManager.createNotificationChannel(channel)
-                        }
-
-                        while (isRunning) {
-                            val query = DownloadManager.Query().setFilterById(dmId)
-                            val cursor = downloadManager.query(query)
-                            if (cursor != null && cursor.moveToFirst()) {
-                                val bytesDownloadedColumn = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-                                val totalBytesColumn = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-                                val statusColumn = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-    
-                                val bytesDownloaded = if (bytesDownloadedColumn != -1) cursor.getLong(bytesDownloadedColumn) else 0L
-                                val totalBytes = if (totalBytesColumn != -1) cursor.getLong(totalBytesColumn) else contentLength
-                                val status = if (statusColumn != -1) cursor.getInt(statusColumn) else DownloadManager.STATUS_RUNNING
-    
-                                val currentTime = System.currentTimeMillis()
-                                val timeDelta = (currentTime - lastTime) / 1000f
-                                
-                                val speed = if (previousBytes == -1L) {
-                                    previousBytes = bytesDownloaded
-                                    lastTime = currentTime
-                                    null
-                                } else if (timeDelta >= 0.5f) {
-                                    val calc = ((bytesDownloaded - previousBytes) / timeDelta).toLong()
-                                    if (bytesDownloaded > previousBytes) {
-                                        lastTime = currentTime
-                                        previousBytes = bytesDownloaded
-                                        calc
-                                    } else if (timeDelta > 5.0f && status != DownloadManager.STATUS_PAUSED) {
-                                        lastTime = currentTime
-                                        0L
-                                    } else {
-                                        null
-                                    }
-                                } else {
-                                    null
-                                }
-    
-                                val activeSpeedText = if (speed != null) {
-                                    val text = formatSpeed(speed)
-                                    val etaText = if (speed > 0 && totalBytes > 0 && totalBytes > bytesDownloaded) formatEta((totalBytes - bytesDownloaded) / speed) else ""
-                                    withContext(Dispatchers.Main) {
-                                        downloadSpeeds[downloadId] = text
-                                        if (etaText.isNotEmpty()) {
-                                            downloadEtas[downloadId] = etaText
-                                        } else {
-                                            downloadEtas.remove(downloadId)
-                                        }
-                                    }
-                                    text
-                                } else {
-                                    downloadSpeeds[downloadId]
-                                }
-
-                                // Update Android notification dynamically
-                                // Channel created outside the loop
-                                val progressPercent = if (totalBytes > 0) (bytesDownloaded * 100 / totalBytes).toInt() else 0
-                                val notifText = if (activeSpeedText != null && status == DownloadManager.STATUS_RUNNING) "Downloading... $activeSpeedText" else if (status == DownloadManager.STATUS_PAUSED) "Paused" else "Downloading..."
-                                
-                                val builder = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
-                                    .setContentTitle(fileName)
-                                    .setContentText(notifText)
-                                    .setSmallIcon(android.R.drawable.stat_sys_download)
-                                    .setOngoing(true)
-                                    .setProgress(100, progressPercent, totalBytes <= 0)
-                                    .setOnlyAlertOnce(true)
-                                
-                                notificationManager.notify(downloadId, builder.build())
-
-                                val mappedStatus = when (status) {
-                                    DownloadManager.STATUS_RUNNING -> "DOWNLOADING"
-                                    DownloadManager.STATUS_SUCCESSFUL -> {
-                                        isRunning = false
-                                        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                                        val builder = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
-                                            .setContentTitle(fileName)
-                                            .setContentText("Download Complete")
-                                            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                                            .setAutoCancel(true)
-                                        notificationManager.notify(downloadId, builder.build())
-                                        "COMPLETED"
-                                    }
-                                    DownloadManager.STATUS_FAILED -> {
-                                        isRunning = false
-                                        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                                        val builder = androidx.core.app.NotificationCompat.Builder(context, "stormx_downloads")
-                                            .setContentTitle(fileName)
-                                            .setContentText("Download Failed")
-                                            .setSmallIcon(android.R.drawable.stat_notify_error)
-                                            .setAutoCancel(true)
-                                        notificationManager.notify(downloadId, builder.build())
-                                        "FAILED"
-                                    }
-                                    DownloadManager.STATUS_PAUSED -> "PAUSED"
-                                    else -> "DOWNLOADING"
-                                }
-    
-                                val dbItem = repository.downloadsFlow.first().find { it.id == downloadId }
-                                if (dbItem != null) {
-                                    repository.updateDownload(dbItem.copy(
-                                        status = mappedStatus,
-                                        downloadedBytes = bytesDownloaded,
-                                        totalBytes = if (totalBytes > 0) totalBytes else dbItem.totalBytes
-                                    ))
-                                }
-                            } else {
-                                isRunning = false
-                            }
-                            cursor?.close()
-                            if (isRunning) {
-                                val refreshRate = if (settings.value.batterySaverModeEnabled) 3000L else 1000L
-                                kotlinx.coroutines.delay(refreshRate)
-                            }
-                        }
-                        
-                        // Cleanup speed display on termination
-                        withContext(Dispatchers.Main) {
-                            downloadSpeeds.remove(downloadId)
-                            downloadEtas.remove(downloadId)
-                        }
+                    var initialItem: com.example.data.DownloadItem? = null
+                    for (i in 1..20) {
+                        initialItem = repository.downloadsFlow.first().find { it.id == downloadId }
+                        if (initialItem != null) break
+                        kotlinx.coroutines.delay(100)
                     }
+                    if (initialItem != null) {
+                        repository.updateDownload(initialItem.copy(status = "DOWNLOADING", dmId = dmId))
+                    }
+    
+                    trackDownload(downloadId, dmId, context, fileName, contentLength)
     
                     withContext(Dispatchers.Main) {
                         val startText = BrowserTranslator.translateText("Download started: $fileName", settings.value.language)
@@ -1372,26 +1510,10 @@ class BrowserViewModel(
         viewModelScope.launch {
             val dbItem = repository.downloadsFlow.first().find { it.id == id } ?: return@launch
             try {
-                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                val cursor = dm.query(DownloadManager.Query())
-                var dmId: Long = -1
-                if (cursor != null) {
-                    while (cursor.moveToNext()) {
-                        val titleIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE)
-                        if (titleIndex != -1 && cursor.getString(titleIndex) == dbItem.fileName) {
-                            val idIndex = cursor.getColumnIndex(DownloadManager.COLUMN_ID)
-                            if (idIndex != -1) {
-                                dmId = cursor.getLong(idIndex)
-                                break
-                            }
-                        }
-                    }
-                    cursor.close()
-                }
-                if (dmId != -1L) {
+                if (dbItem.dmId != -1L) {
                     val values = android.content.ContentValues()
                     values.put("control", 1) // 1 for pause
-                    context.contentResolver.update(android.net.Uri.parse("content://downloads/my_downloads/$dmId"), values, null, null)
+                    context.contentResolver.update(android.net.Uri.parse("content://downloads/my_downloads/${dbItem.dmId}"), values, null, null)
                     repository.updateDownload(dbItem.copy(status = "PAUSED"))
                 }
             } catch (e: Exception) {}
@@ -1402,26 +1524,10 @@ class BrowserViewModel(
         viewModelScope.launch {
             val dbItem = repository.downloadsFlow.first().find { it.id == id } ?: return@launch
             try {
-                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                val cursor = dm.query(DownloadManager.Query())
-                var dmId: Long = -1
-                if (cursor != null) {
-                    while (cursor.moveToNext()) {
-                        val titleIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE)
-                        if (titleIndex != -1 && cursor.getString(titleIndex) == dbItem.fileName) {
-                            val idIndex = cursor.getColumnIndex(DownloadManager.COLUMN_ID)
-                            if (idIndex != -1) {
-                                dmId = cursor.getLong(idIndex)
-                                break
-                            }
-                        }
-                    }
-                    cursor.close()
-                }
-                if (dmId != -1L) {
+                if (dbItem.dmId != -1L) {
                     val values = android.content.ContentValues()
                     values.put("control", 0) // 0 for resume
-                    context.contentResolver.update(android.net.Uri.parse("content://downloads/my_downloads/$dmId"), values, null, null)
+                    context.contentResolver.update(android.net.Uri.parse("content://downloads/my_downloads/${dbItem.dmId}"), values, null, null)
                     repository.updateDownload(dbItem.copy(status = "DOWNLOADING"))
                 }
             } catch (e: Exception) {}
@@ -1432,24 +1538,9 @@ class BrowserViewModel(
         viewModelScope.launch {
             val dbItem = repository.downloadsFlow.first().find { it.id == id } ?: return@launch
             try {
-                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                val cursor = dm.query(DownloadManager.Query())
-                var dmId: Long = -1
-                if (cursor != null) {
-                    while (cursor.moveToNext()) {
-                        val titleIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE)
-                        if (titleIndex != -1 && cursor.getString(titleIndex) == dbItem.fileName) {
-                            val idIndex = cursor.getColumnIndex(DownloadManager.COLUMN_ID)
-                            if (idIndex != -1) {
-                                dmId = cursor.getLong(idIndex)
-                                break
-                            }
-                        }
-                    }
-                    cursor.close()
-                }
-                if (dmId != -1L) {
-                    dm.remove(dmId)
+                if (dbItem.dmId != -1L) {
+                    val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    dm.remove(dbItem.dmId)
                 }
                 val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
                 notificationManager.cancel(id)
@@ -1457,6 +1548,35 @@ class BrowserViewModel(
                 downloadSpeeds.remove(id)
                 downloadEtas.remove(id)
             } catch (e: Exception) {}
+        }
+    }
+
+    fun isAppInstalled(context: Context, appName: String): Boolean {
+        val packageName = getSocialAppPackage(appName)
+        if (packageName.isEmpty()) return false
+        return try {
+            context.packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun getSocialAppPackage(appName: String): String {
+        return when (appName) {
+            "Instagram" -> "com.instagram.android"
+            "Facebook" -> "com.facebook.katana"
+            "X" -> "com.twitter.android"
+            "YouTube" -> "com.google.android.youtube"
+            "TikTok" -> "com.zhiliaoapp.musically"
+            "Reddit" -> "com.reddit.frontpage"
+            "LinkedIn" -> "com.linkedin.android"
+            "Spotify" -> "com.spotify.music"
+            "Snapchat" -> "com.snapchat.android"
+            "Pinterest" -> "com.pinterest"
+            "WhatsApp" -> "com.whatsapp"
+            "Telegram" -> "org.telegram.messenger"
+            else -> ""
         }
     }
 
@@ -1469,7 +1589,7 @@ class BrowserViewModel(
         return when {
             host.contains("instagram.com") || host.contains("instagr.am") -> "Instagram"
             host.contains("facebook.com") || host.contains("fb.com") -> "Facebook"
-            host.contains("twitter.com") || host.contains("x.com") || host.contains("t.co") -> "Twitter / X"
+            host.contains("twitter.com") || host.contains("x.com") -> "X"
             host.contains("youtube.com") || host.contains("youtu.be") -> "YouTube"
             host.contains("tiktok.com") -> "TikTok"
             host.contains("reddit.com") -> "Reddit"

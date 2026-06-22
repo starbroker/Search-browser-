@@ -38,6 +38,7 @@ data class DownloadItem(
     val totalBytes: Long,
     val downloadedBytes: Long,
     val status: String, // PENDING, DOWNLOADING, COMPLETED, FAILED
+    val dmId: Long = -1L,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -175,7 +176,7 @@ interface BrowserDao {
         BrowserSettings::class,
         WebsitePermission::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class BrowserDatabase : RoomDatabase() {

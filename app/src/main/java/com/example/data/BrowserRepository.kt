@@ -59,7 +59,7 @@ class BrowserRepository(private val dao: BrowserDao) {
     // Downloads
     val downloadsFlow: Flow<List<DownloadItem>> = dao.getAllDownloadsFlow()
 
-    suspend fun addDownload(url: String, fileName: String, filePath: String, totalBytes: Long, mimeType: String?): Int {
+    suspend fun addDownload(url: String, fileName: String, filePath: String, totalBytes: Long, mimeType: String?, dmId: Long = -1L): Int {
         val id = dao.insertDownload(
             DownloadItem(
                 url = url,
@@ -68,6 +68,7 @@ class BrowserRepository(private val dao: BrowserDao) {
                 mimeType = mimeType,
                 totalBytes = totalBytes,
                 downloadedBytes = 0,
+                dmId = dmId,
                 status = "PENDING"
             )
         )
