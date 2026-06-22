@@ -3226,6 +3226,7 @@ fun SettingsSheet(
     val selectedWallpaper = wallpapers[wallpaperIndex % wallpapers.size]
 
     var showClearSuccessMessage by remember { mutableStateOf(false) }
+    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
     Surface(
         modifier = Modifier
@@ -3235,9 +3236,17 @@ fun SettingsSheet(
             .colorOSGradientBackground(isDark, alpha = 0.65f),
         color = Color.Transparent
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            androidx.compose.animation.AnimatedContent(
-                modifier = Modifier.weight(1f),
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = if (isTablet) 80.dp else 0.dp,
+                        bottom = if (isTablet) 0.dp else 80.dp
+                    )
+            ) {
+                androidx.compose.animation.AnimatedContent(
+                    modifier = Modifier.weight(1f),
                 targetState = when {
                     showAppearancePage -> "appearance"
                     showSitePermissionsPage -> "site_permissions"
@@ -3993,103 +4002,105 @@ fun SettingsSheet(
         } // closes when
         } // closes Column
         } // closes AnimatedContent
+        } // closes Column
 
-            // 3. Floating Bottom Navigation Bar matching the other immersive pages
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Surface(
-                    color = glassCardColor(isDark),
-                    shape = RoundedCornerShape(28.dp),
-                    tonalElevation = 6.dp,
-                    modifier = Modifier
+        // 3. Adaptive Navigation Bar matching the other immersive pages
+        AdaptiveNavLayout(
+            isTablet = isTablet,
+            modifier = Modifier.then(
+                if (isTablet) {
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 16.dp)
+                        .width(68.dp)
+                        .fillMaxHeight(0.6f)
+                        .background(glassCardColor(isDark), RoundedCornerShape(34.dp))
+                        .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(34.dp))
+                        .padding(vertical = 24.dp)
+                } else {
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                         .fillMaxWidth()
                         .height(68.dp)
+                        .background(glassCardColor(isDark), RoundedCornerShape(28.dp))
                         .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(28.dp))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { viewModel.showSettings.value = false }) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowLeft,
-                                contentDescription = "Back",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        IconButton(onClick = { viewModel.activeTabGoForward(context); viewModel.showSettings.value = false }) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowRight,
-                                contentDescription = "Forward decoration",
-                                tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        IconButton(onClick = {
-                            viewModel.navigateActiveTab(settings.homeUrl, context)
-                            viewModel.showSettings.value = false
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Home,
-                                contentDescription = "Home Page Launcher",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable {
-                                    viewModel.openTabsOverview()
-                                    viewModel.showSettings.value = false
-                                }
-                                .padding(8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(26.dp)
-                                    .background(
-                                        color = if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f),
-                                        shape = RoundedCornerShape(6.dp)
-                                    )
-                                    .border(
-                                        width = 1.5.dp,
-                                        color = if (isDark) Color.White.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.4f),
-                                        shape = RoundedCornerShape(6.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = tabsList.size.toString(),
-                                    fontFamily = activeFont,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                )
-                            }
-                        }
-                        IconButton(onClick = { 
-                            viewModel.openMenuDrawer()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Menu,
-                                contentDescription = "Menu active",
-                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
+                        .padding(horizontal = 24.dp)
                 }
-            } // closes Row (Bottom Nav Bar)
-        } // closes Column
+            )
+        ) {
+            IconButton(onClick = { viewModel.showSettings.value = false }) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowLeft,
+                    contentDescription = "Back",
+                    tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+            IconButton(onClick = { viewModel.activeTabGoForward(context); viewModel.showSettings.value = false }) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowRight,
+                    contentDescription = "Forward decoration",
+                    tint = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.3f),
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+            IconButton(onClick = {
+                viewModel.navigateActiveTab(settings.homeUrl, context)
+                viewModel.showSettings.value = false
+            }) {
+                Icon(
+                    imageVector = Icons.Default.Home,
+                    contentDescription = "Home Page Launcher",
+                    tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable {
+                        viewModel.openTabsOverview()
+                        viewModel.showSettings.value = false
+                    }
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .background(
+                            color = if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .border(
+                            width = 1.5.dp,
+                            color = if (isDark) Color.White.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(6.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = tabsList.size.toString(),
+                        fontFamily = activeFont,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
+                    )
+                }
+            }
+            IconButton(onClick = { 
+                viewModel.openMenuDrawer()
+            }) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "Menu active",
+                    tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+        } // closes Box
     } // closes Surface (SettingsSheet)
 } // closes SettingsSheet function
 
