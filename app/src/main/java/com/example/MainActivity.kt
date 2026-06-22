@@ -23,6 +23,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Hide logcat errors by pre-creating cache directories
+        try {
+            val wasmDir = java.io.File(cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
+            val jsDir = java.io.File(cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
+            if (!wasmDir.exists()) wasmDir.mkdirs()
+            if (!jsDir.exists()) jsDir.mkdirs()
+        } catch (e: Exception) {}
+        
         // Custom edge-to-edge drawing capabilities (ColorOS 16 Full Bleed look)
         enableEdgeToEdge()
 

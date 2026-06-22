@@ -352,7 +352,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 // Determine layout direction for navigation bar
                 val isTablet = LocalConfiguration.current.screenWidthDp >= 600
 
-                val isMainPopupOpen = appRedirectProposal != null || showOsSettingsRedirect || imageDownloadProposal != null || permissionProposal != null
+                val isMainPopupOpen = appRedirectProposal != null || showOsSettingsRedirect || imageDownloadProposal != null || permissionProposal != null || showMenuDrawer || showShield || showTabs || showSettings || showBookmarks || showHistory || showDownloads
                 val baseBlurRadius by androidx.compose.animation.core.animateDpAsState(
                     targetValue = if (isMainPopupOpen && !settings.batterySaverModeEnabled) 16.dp else 0.dp,
                     animationSpec = if (settings.batterySaverModeEnabled) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(300),
