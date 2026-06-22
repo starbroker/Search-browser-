@@ -945,6 +945,12 @@ class BrowserViewModel(
                     "Bing" -> "https://www.bing.com/search?q=${Uri.encode(formattedUrl)}"
                     "Yahoo" -> "https://search.yahoo.com/search?p=${Uri.encode(formattedUrl)}"
                     "DuckDuckGo" -> "https://duckduckgo.com/?q=${Uri.encode(formattedUrl)}"
+                    "Baidu" -> "https://www.baidu.com/s?wd=${Uri.encode(formattedUrl)}"
+                    "Yandex" -> "https://yandex.com/search/?text=${Uri.encode(formattedUrl)}"
+                    "Brave" -> "https://search.brave.com/search?q=${Uri.encode(formattedUrl)}"
+                    "Ecosia" -> "https://www.ecosia.org/search?q=${Uri.encode(formattedUrl)}"
+                    "Qwant" -> "https://www.qwant.com/?q=${Uri.encode(formattedUrl)}"
+                    "Startpage" -> "https://www.startpage.com/sp/search?query=${Uri.encode(formattedUrl)}"
                     else -> "https://search.stormx.ninja/results?q=${Uri.encode(formattedUrl)}"
                 }
             }
@@ -1073,6 +1079,12 @@ class BrowserViewModel(
                 "Bing" -> "https://www.bing.com/"
                 "Yahoo" -> "https://www.yahoo.com/"
                 "DuckDuckGo" -> "https://duckduckgo.com/"
+                "Baidu" -> "https://www.baidu.com/"
+                "Yandex" -> "https://yandex.com/"
+                "Brave" -> "https://search.brave.com/"
+                "Ecosia" -> "https://www.ecosia.org/"
+                "Qwant" -> "https://www.qwant.com/"
+                "Startpage" -> "https://www.startpage.com/"
                 "search.stormx.ninja" -> "https://search.stormx.ninja/"
                 else -> "https://search.stormx.ninja/"
             }

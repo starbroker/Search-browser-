@@ -606,7 +606,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                 }
                 } // End Blur Box
 
-            val isMainPopupOpenForModal = appRedirectProposal != null || showOsSettingsRedirect || imageDownloadProposal != null || permissionProposal != null
+            val isMainPopupOpenForModal = appRedirectProposal != null || showOsSettingsRedirect || imageDownloadProposal != null || permissionProposal != null || showMenuDrawer || showShield
             val modalBlurRadius by androidx.compose.animation.core.animateDpAsState(
                 targetValue = if (isMainPopupOpenForModal) 16.dp else 0.dp,
                 animationSpec = androidx.compose.animation.core.tween(300),
@@ -6648,7 +6648,7 @@ fun SearchEngineSubPage(
                         .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
                 ) {
                     Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                        listOf("StormX", "Google", "Bing", "Yahoo", "DuckDuckGo").forEach { engineName ->
+                        listOf("StormX", "Google", "Bing", "Yahoo", "DuckDuckGo", "Baidu", "Yandex", "Brave", "Ecosia", "Qwant", "Startpage").forEach { engineName ->
                             val engineValue = if (engineName == "StormX") "search.stormx.ninja" else engineName
                             val isSelected = settings.searchEngine == engineValue
                             
