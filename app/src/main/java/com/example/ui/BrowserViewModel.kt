@@ -576,6 +576,13 @@ class BrowserViewModel(
                 }
             }
             
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
+                androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
+            } else if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
+                val isDark = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                androidx.webkit.WebSettingsCompat.setForceDark(settings, if (isDark) androidx.webkit.WebSettingsCompat.FORCE_DARK_ON else androidx.webkit.WebSettingsCompat.FORCE_DARK_OFF)
+            }
+            
             // Allow cookies
             val cookieManager = CookieManager.getInstance()
             cookieManager.setAcceptCookie(true)
@@ -1388,7 +1395,18 @@ class BrowserViewModel(
         contentLength: Long,
         context: Context
     ) {
-        val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType) ?: "download_file"
+        var fileName = URLUtil.guessFileName(url, contentDisposition, mimeType) ?: "download_file"
+        if (fileName.endsWith(".bin") || fileName.endsWith(".htm")) {
+            val lastSegment = android.net.Uri.parse(url).lastPathSegment
+            if (!lastSegment.isNullOrEmpty() && lastSegment.contains(".")) {
+                fileName = lastSegment
+            } else if (!contentDisposition.isNullOrEmpty()) {
+                val match = Regex("""filename=["']?([^"';]+)["']?""").find(contentDisposition)
+                if (match != null) {
+                    fileName = match.groupValues[1]
+                }
+            }
+        }
         
         viewModelScope.launch(Dispatchers.IO) {
             // Save in Room DB
@@ -1429,7 +1447,7 @@ class BrowserViewModel(
                         setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
                         setAllowedOverMetered(true)
                         setAllowedOverRoaming(true)
-                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
+                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                         setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
                     }
     

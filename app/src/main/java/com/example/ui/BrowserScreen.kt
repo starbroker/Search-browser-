@@ -354,8 +354,8 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
 
                 val isMainPopupOpen = appRedirectProposal != null || showOsSettingsRedirect || imageDownloadProposal != null || permissionProposal != null || showMenuDrawer || showShield || showTabs || showSettings || showBookmarks || showHistory || showDownloads
                 val baseBlurRadius by androidx.compose.animation.core.animateDpAsState(
-                    targetValue = if (isMainPopupOpen && !settings.batterySaverModeEnabled) 16.dp else 0.dp,
-                    animationSpec = if (settings.batterySaverModeEnabled) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(300),
+                    targetValue = if (isMainPopupOpen) 16.dp else 0.dp,
+                    animationSpec = androidx.compose.animation.core.tween(300),
                     label = "baseBlur"
                 )
                 
@@ -608,8 +608,8 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
 
             val isMainPopupOpenForModal = appRedirectProposal != null || showOsSettingsRedirect || imageDownloadProposal != null || permissionProposal != null
             val modalBlurRadius by androidx.compose.animation.core.animateDpAsState(
-                targetValue = if (isMainPopupOpenForModal && !settings.batterySaverModeEnabled) 16.dp else 0.dp,
-                animationSpec = if (settings.batterySaverModeEnabled) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(300),
+                targetValue = if (isMainPopupOpenForModal) 16.dp else 0.dp,
+                animationSpec = androidx.compose.animation.core.tween(300),
                 label = "modalBlur"
             )
             
@@ -3205,8 +3205,7 @@ fun SettingsSheet(
 
     val showGeneralGroup = query.isEmpty() || 
         "search engine".contains(query) || "google".contains(query) || "bing".contains(query) || "yahoo".contains(query) || "duckduckgo".contains(query) || "stormx".contains(query) ||
-        "languages".contains(query) || "english".contains(query) || "chinese".contains(query) || "spanish".contains(query) || "german".contains(query) || "french".contains(query) ||
-        "battery saver mode".contains(query) || "battery".contains(query) || "performance".contains(query) || "power".contains(query)
+        "languages".contains(query) || "english".contains(query) || "chinese".contains(query) || "spanish".contains(query) || "german".contains(query) || "french".contains(query)
 
     val showCustomizationGroup = query.isEmpty() ||
         "appearance".contains(query) || "typography".contains(query) || "font".contains(query) || "spacing".contains(query) || "theme".contains(query) || "accent".contains(query) || "customization".contains(query) ||
@@ -3487,58 +3486,6 @@ fun SettingsSheet(
                                 )
                             }
                             
-                            HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
-
-                            // Battery Saver Mode Option
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { 
-                                        viewModel.updateSettings(settings.copy(batterySaverModeEnabled = !settings.batterySaverModeEnabled))
-                                    }
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.BatterySaver,
-                                        contentDescription = "Battery Saver Icon",
-                                        tint = Color(0xFF0066FF),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Battery Saver Mode",
-                                        fontFamily = activeFont,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
-                                        color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                                    )
-                                    Text(
-                                        text = "Reduces refresh rate and animation complexity to save power",
-                                        fontFamily = activeFont,
-                                        fontSize = 12.sp,
-                                        color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
-                                    )
-                                }
-                                Switch(
-                                    checked = settings.batterySaverModeEnabled,
-                                    onCheckedChange = { 
-                                        viewModel.updateSettings(settings.copy(batterySaverModeEnabled = it))
-                                    },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White,
-                                        checkedTrackColor = Color(0xFF0066FF)
-                                    )
-                                )
-                            }
                         }
                     }
                 }
@@ -4212,77 +4159,6 @@ fun ColumnScope.AppearanceSubPage(
                 .border(1.dp, glassBorderColor(isDark), RoundedCornerShape(20.dp))
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Theme Selection Row
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .background(Color(0xFF0066FF).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (isDark) Icons.Default.NightsStay else Icons.Default.WbSunny,
-                                contentDescription = "Theme Icon",
-                                tint = Color(0xFF0066FF),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Column {
-                            Text(
-                                text = "Theme Mode",
-                                fontFamily = activeFont,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 16.sp,
-                                color = if (isDark) Color.White else Color(0xFF1C1C1E)
-                            )
-                            Text(
-                                text = "Active: ${settings.themeMode}",
-                                fontFamily = activeFont,
-                                fontSize = 12.sp,
-                                color = (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(if (isDark) Color(0x0CFFFFFF) else Color(0x06000000), RoundedCornerShape(12.dp))
-                            .border(1.dp, if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        listOf("LIGHT", "DARK", "SYSTEM").forEach { mode ->
-                            val isSelected = settings.themeMode == mode
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) Color(0xFF0066FF) else Color.Transparent)
-                                    .clickable { viewModel.updateThemeMode(mode) }
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = mode,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = activeFont,
-                                    color = if (isSelected) Color.White else (if (isDark) Color.White else Color(0xFF1C1C1E)).copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = glassBorderColor(isDark), thickness = 0.5.dp)
-
                 // Brand Accent Color Selection Row
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -5456,7 +5332,7 @@ fun DownloadsPage(
                         val isCompleted = downloadItem.status == "COMPLETED"
                         val isDownloading = downloadItem.status == "DOWNLOADING"
                         val progress = if (downloadItem.totalBytes > 0) downloadItem.downloadedBytes.toFloat() / downloadItem.totalBytes.toFloat() else 0f
-                        val animatedProgress by animateFloatAsState(targetValue = progress, animationSpec = if (settings.batterySaverModeEnabled) snap() else tween(300, easing = LinearEasing), label = "")
+                        val animatedProgress by animateFloatAsState(targetValue = progress, animationSpec = tween(300, easing = LinearEasing), label = "")
                         val baseIconTint = if (downloadItem.status == "FAILED") dangerColor else if (isDownloading) accentColor else successColor
 
                         Row(
