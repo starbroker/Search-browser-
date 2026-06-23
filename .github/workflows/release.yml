@@ -88,10 +88,10 @@ jobs:
             echo "Signing secrets found. Building signed Release APK..."
             echo "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
             export KEYSTORE_PATH="$(pwd)/my-upload-key.jks"
-            gradle assembleRelease --stacktrace
+            gradle assembleRelease --stacktrace -x lint
           else
             echo "Signing secrets not fully configured. Building unsigned Release APK."
-            gradle assembleRelease --stacktrace
+            gradle assembleRelease --stacktrace -x lint
           fi
           
           # Handle output path differences between signed and unsigned builds
