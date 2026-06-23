@@ -39,8 +39,6 @@ jobs:
           build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-use-agree: "yes"
 
-      - name: Make Gradle Wrapper Executable
-        run: chmod +x gradlew
 
       - name: Create build-artifacts directory
         run: mkdir -p build-artifacts
