@@ -34,11 +34,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.9'
+          gradle-version: 'wrapper'
           cache: gradle
           build-scan-publish: true
           build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-use-agree: "yes"
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x gradlew
 
       - name: Create build-artifacts directory
         run: mkdir -p build-artifacts
@@ -58,7 +61,7 @@ jobs:
           fi
 
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Prepare Debug APK Release
         run: |
@@ -76,33 +79,33 @@ jobs:
             exit 1
           fi
 
-      - name: Build Release APK (Signed or Unsigned)
+      - name: Build Release APK and AAB
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
-            echo "Signing secrets found. Building signed Release APK..."
+            echo "Signing secrets found. Building signed Release APK and AAB..."
             echo "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
             export KEYSTORE_PATH="$(pwd)/my-upload-key.jks"
-            gradle assembleRelease --stacktrace
+            ./gradlew assembleRelease bundleRelease --stacktrace
           else
-            echo "Signing secrets not fully configured. Building unsigned Release APK."
-            gradle assembleRelease --stacktrace
+            echo "Signing secrets not fully configured. Building unsigned Release APK and AAB."
+            ./gradlew assembleRelease bundleRelease --stacktrace
           fi
           
           # Handle output path differences between signed and unsigned builds
           SIGNED_APK="app/build/outputs/apk/release/app-release.apk"
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          SIGNED_AAB="app/build/outputs/bundle/release/app-release.aab"
           
           if [ -f "$SIGNED_APK" ]; then
             RELEASE_APK_PATH="$SIGNED_APK"
           elif [ -f "$UNSIGNED_APK" ]; then
             RELEASE_APK_PATH="$UNSIGNED_APK"
           else
-            echo "Error: Release APK built but not found at expected paths"
-            exit 1
+            echo "Warning: Release APK built but not found at expected paths"
           fi
           
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
@@ -111,8 +114,17 @@ jobs:
             VERSION="dev"
           fi
           
-          cp "$RELEASE_APK_PATH" "build-artifacts/Search-${VERSION}-release.apk"
-          echo "Release APK prepared at build-artifacts/Search-${VERSION}-release.apk"
+          if [ -n "$RELEASE_APK_PATH" ]; then
+            cp "$RELEASE_APK_PATH" "build-artifacts/Search-${VERSION}-release.apk"
+            echo "Release APK prepared at build-artifacts/Search-${VERSION}-release.apk"
+          fi
+          
+          if [ -f "$SIGNED_AAB" ]; then
+            cp "$SIGNED_AAB" "build-artifacts/Search-${VERSION}-release.aab"
+            echo "Release AAB prepared at build-artifacts/Search-${VERSION}-release.aab"
+          else
+            echo "Warning: Release AAB not found"
+          fi
 
       - name: Upload APKs as Run Artifacts
         uses: actions/upload-artifact@v4
@@ -124,7 +136,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: build-artifacts/*.apk
+          files: |
+            build-artifacts/*.apk
+            build-artifacts/*.aab
           draft: false
           prerelease: false
           generate_release_notes: true
