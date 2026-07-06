@@ -570,7 +570,11 @@ class BrowserViewModel(
                 setGeolocationEnabled(true)
                 allowFileAccess = false
                 allowContentAccess = false
-                cacheMode = WebSettings.LOAD_DEFAULT
+                cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+                
+                // Speed optimizations
+                offscreenPreRaster = true
+
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     safeBrowsingEnabled = true
                 }
@@ -659,6 +663,13 @@ class BrowserViewModel(
                 }
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                    try {
+                        val wasmDir = java.io.File(context.cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
+                        val jsDir = java.io.File(context.cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
+                        if (!wasmDir.exists()) wasmDir.mkdirs()
+                        if (!jsDir.exists()) jsDir.mkdirs()
+                    } catch (e: Exception) {}
+                    
                     url?.let {
                         updateTabProperties(tabId, url = it, isLoading = true, isReadingMode = false)
                         if (tabId == _activeTabId.value) {

@@ -385,6 +385,17 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                                 .navigationBarsPadding()
                                 .padding(bottom = innerPadding.calculateBottomPadding() / 4)
                         ) {
+                            if (isTablet) {
+                                TabletTabStrip(
+                                    tabs = tabsList,
+                                    activeTabId = activeTab?.id,
+                                    onTabSelect = { viewModel.selectTab(it) },
+                                    onTabClose = { viewModel.removeTab(it) },
+                                    onNewTab = { viewModel.addNewTab(settings.homeUrl) },
+                                    isDark = isDark,
+                                    fontFamily = activeFont
+                                )
+                            }
                             BrowserHeader(
                                 urlInput = currentUrlInput,
                                 activeTab = activeTab,
@@ -1584,22 +1595,10 @@ fun MenuDrawerSheet(
     val context = androidx.compose.ui.platform.LocalContext.current
     val frostedGlassBrush = Brush.verticalGradient(
         colors = listOf(
-            if (isDark) Color(0x803A3A45) else Color(0xCCFFFFFF),
-            if (isDark) Color(0x501E1E23) else Color(0x80FAFAFA)
+            if (isDark) Color(0x663A3A45) else Color(0x66FFFFFF),
+            if (isDark) Color(0x331E1E23) else Color(0x33FAFAFA)
         )
     )
-    val dispersionBorder = Brush.linearGradient(
-        colors = listOf(
-            Color(0x66FF3B30),
-            Color(0x66FF9500),
-            Color(0x66FFCC00),
-            Color(0x664CD964),
-            Color(0x665AC8FA),
-            Color(0x66007AFF),
-            Color(0x665856D6)
-        )
-    )
-
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
@@ -1616,11 +1615,6 @@ fun MenuDrawerSheet(
                 .fillMaxWidth()
                 .background(
                     brush = frostedGlassBrush,
-                    shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
-                )
-                .border(
-                    width = 1.5.dp,
-                    brush = dispersionBorder,
                     shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
                 )
         ) {
@@ -2704,7 +2698,7 @@ fun TabsOverviewPage(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .colorOSGradientBackground(isDark, alpha = 0.65f),
+            .colorOSGradientBackground(isDark, alpha = 0.25f),
         color = Color.Transparent
     ) {
         val navBar: @Composable () -> Unit = {
@@ -3288,7 +3282,7 @@ fun SettingsSheet(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .colorOSGradientBackground(isDark, alpha = 0.65f),
+            .colorOSGradientBackground(isDark, alpha = 0.25f),
         color = Color.Transparent
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -4497,7 +4491,7 @@ fun BookmarksPage(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .colorOSGradientBackground(isDark, alpha = 0.65f),
+            .colorOSGradientBackground(isDark, alpha = 0.25f),
         color = Color.Transparent
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -4881,7 +4875,7 @@ fun HistoryPage(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .colorOSGradientBackground(isDark, alpha = 0.65f),
+            .colorOSGradientBackground(isDark, alpha = 0.25f),
         color = Color.Transparent
     ) {
         Box(modifier = Modifier.fillMaxSize().blur(popupBlurRadius, edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)) {
@@ -5201,8 +5195,8 @@ fun DownloadsPage(
     
     // Theme Colors
     val bgColor = if (isDark) Color(0xFF121214) else Color(0xFFF2F2F7)
-    val glassBg = if (isDark) Color(0xA61E1E23) else Color(0xFFE5E5EA)
-    val glassBorder = if (isDark) Color(0x1AFFFFFF) else Color(0xFFD1D1D6)
+    val glassBg = glassCardColor(isDark)
+    val glassBorder = glassBorderColor(isDark)
     val textMain = if (isDark) Color(0xFFF5F5F7) else Color(0xFF1C1C1E)
     val textMuted = if (isDark) Color(0xFFA1A1A6) else Color(0xFF6E6E73)
     val accentColor = if (isDark) Color(0xFF4D94FF) else Color(0xFF0066FF)
@@ -5300,7 +5294,7 @@ fun DownloadsPage(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .colorOSGradientBackground(isDark, alpha = 0.65f),
+            .colorOSGradientBackground(isDark, alpha = 0.25f),
         color = Color.Transparent
     ) {
         Box(modifier = Modifier.fillMaxSize().blur(popupBlurRadius, edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)) {
@@ -5782,16 +5776,16 @@ fun isHomepageUrl(url: String?, settings: BrowserSettings? = null): Boolean {
 
 @Composable
 fun glassCardColor(isDark: Boolean) = if (isDark) {
-    Color(0xA61E1E23) // rgba(30, 30, 35, 0.65)
+    Color(0x401E1E23) // rgba(30, 30, 35, 0.25)
 } else {
-    Color(0xA6FFFFFF) // rgba(255, 255, 255, 0.65)
+    Color(0x4DFFFFFF) // rgba(255, 255, 255, 0.30)
 }
 
 @Composable
 fun glassBorderColor(isDark: Boolean) = if (isDark) {
-    Color(0x1AFFFFFF) // rgba(255, 255, 255, 0.1)
+    Color(0x40FFFFFF) // rgba(255, 255, 255, 0.25)
 } else {
-    Color(0x80FFFFFF) // rgba(255, 255, 255, 0.5)
+    Color(0x99FFFFFF) // rgba(255, 255, 255, 0.60)
 }
 
 fun Modifier.colorOSGradientBackground(isDark: Boolean, alpha: Float = 1.0f): Modifier = this.drawBehind {
