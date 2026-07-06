@@ -363,7 +363,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
                     if (isTablet) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         AnimatedVisibility(
-                            visible = !isSearchFocused,
+                            visible = true,
                             enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
                             exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
                             modifier = Modifier.align(Alignment.CenterVertically)
@@ -589,7 +589,7 @@ fun BrowserScreen(viewModel: BrowserViewModel) {
 
                         // Beautiful floating bottom bar in ColorOS 16 theme
                         AnimatedVisibility(
-                            visible = !isSearchFocused,
+                            visible = true,
                             enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(300, easing = LinearEasing)) + fadeIn(),
                             exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(300, easing = LinearEasing)) + fadeOut()
                         ) {
@@ -1238,27 +1238,35 @@ fun BrowserHeader(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Anti-tracking indicator capsule showing stats
-            Box(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(Color(0xFF0066FF).copy(alpha = 0.15f))
-                    .clickable { viewModel.showShieldPanel.value = true }
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                    .testTag("shield_button"),
-                contentAlignment = Alignment.Center
+            AnimatedVisibility(
+                visible = !isFocused,
+                enter = expandHorizontally(animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.FastOutSlowInEasing)) + fadeIn(animationSpec = androidx.compose.animation.core.tween(600)),
+                exit = shrinkHorizontally(animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.FastOutSlowInEasing)) + fadeOut(animationSpec = androidx.compose.animation.core.tween(600))
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (settings.adBlockEnabled) Icons.Default.Shield else Icons.Default.ShieldMoon,
-                        contentDescription = "Anti-tracker config",
-                        tint = Color(0xFF0066FF),
-                        modifier = Modifier.size(20.dp)
-                    )
+                    // Anti-tracking indicator capsule showing stats
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color(0xFF0066FF).copy(alpha = 0.15f))
+                            .clickable { viewModel.showShieldPanel.value = true }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .testTag("shield_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (settings.adBlockEnabled) Icons.Default.Shield else Icons.Default.ShieldMoon,
+                                contentDescription = "Anti-tracker config",
+                                tint = Color(0xFF0066FF),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+        
+                    Spacer(modifier = Modifier.width(8.dp))
                 }
             }
-
-            Spacer(modifier = Modifier.width(8.dp))
 
             // Address bar input field capsule
             Row(
@@ -1327,32 +1335,40 @@ fun BrowserHeader(
                 }
             }
 
-            Spacer(modifier = Modifier.width(6.dp))
-
-            // Reading mode action icon button
-            IconButton(
-                onClick = { viewModel.toggleReadingMode() },
-                modifier = Modifier.size(36.dp)
+            AnimatedVisibility(
+                visible = !isFocused,
+                enter = expandHorizontally(expandFrom = Alignment.Start, animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.FastOutSlowInEasing)) + fadeIn(animationSpec = androidx.compose.animation.core.tween(600)),
+                exit = shrinkHorizontally(shrinkTowards = Alignment.Start, animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.FastOutSlowInEasing)) + fadeOut(animationSpec = androidx.compose.animation.core.tween(600))
             ) {
-                Icon(
-                    imageVector = Icons.Default.Article,
-                    contentDescription = "Reading Mode",
-                    tint = if (activeTab?.isReadingMode == true) Color(0xFF0A59F7) else if (isDark) Color.White else Color(0xFF1C1C1E),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Refresh action icon button
-            IconButton(
-                onClick = onRefresh,
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh Web Page",
-                    tint = if (isDark) Color.White else Color(0xFF1C1C1E),
-                    modifier = Modifier.size(22.dp)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(modifier = Modifier.width(6.dp))
+        
+                    // Reading mode action icon button
+                    IconButton(
+                        onClick = { viewModel.toggleReadingMode() },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Article,
+                            contentDescription = "Reading Mode",
+                            tint = if (activeTab?.isReadingMode == true) Color(0xFF0A59F7) else if (isDark) Color.White else Color(0xFF1C1C1E),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+        
+                    // Refresh action icon button
+                    IconButton(
+                        onClick = onRefresh,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh Web Page",
+                            tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -1566,7 +1582,23 @@ fun MenuDrawerSheet(
         else -> isSystemInDarkTheme()
     }
     val context = androidx.compose.ui.platform.LocalContext.current
-    val solidColor = if (isDark) Color(0xA61E1E23) else Color(0xA6FAFAFA)
+    val frostedGlassBrush = Brush.verticalGradient(
+        colors = listOf(
+            if (isDark) Color(0x803A3A45) else Color(0xCCFFFFFF),
+            if (isDark) Color(0x501E1E23) else Color(0x80FAFAFA)
+        )
+    )
+    val dispersionBorder = Brush.linearGradient(
+        colors = listOf(
+            Color(0x66FF3B30),
+            Color(0x66FF9500),
+            Color(0x66FFCC00),
+            Color(0x664CD964),
+            Color(0x665AC8FA),
+            Color(0x66007AFF),
+            Color(0x665856D6)
+        )
+    )
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -1574,23 +1606,45 @@ fun MenuDrawerSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
-        containerColor = solidColor,
+        containerColor = Color.Transparent,
         scrimColor = BottomSheetDefaults.ScrimColor,
-        tonalElevation = 10.dp,
-        dragHandle = {
-            BottomSheetDefaults.DragHandle(
-                color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.2f)
-            )
-        }
+        tonalElevation = 0.dp,
+        dragHandle = null
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, bottom = 40.dp, top = 8.dp)
+                .background(
+                    brush = frostedGlassBrush,
+                    shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
+                )
+                .border(
+                    width = 1.5.dp,
+                    brush = dispersionBorder,
+                    shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
+                )
         ) {
-            // Header: Menu & Close button
-            Row(
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(start = 20.dp, end = 20.dp, bottom = 40.dp, top = 16.dp)
+            ) {
+                // Custom Drag Handle
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(bottom = 24.dp)
+                        .width(36.dp)
+                        .height(4.dp)
+                        .background(
+                            color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.2f),
+                            shape = CircleShape
+                        )
+                )
+
+                // Header: Menu & Close button
+                Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 24.dp),
@@ -1809,6 +1863,7 @@ fun MenuDrawerSheet(
                 }
             }
         }
+        } // Closing for new Box
     }
 }
 
