@@ -1454,11 +1454,15 @@ class BrowserViewModel(
                     val request = DownloadManager.Request(Uri.parse(url)).apply {
                         setMimeType(mimeType)
                         addRequestHeader("User-Agent", userAgent)
+                        addRequestHeader("Connection", "keep-alive")
+                        addRequestHeader("Accept-Encoding", "gzip, deflate, br")
                         setDescription("Downloading from StormX Browser")
                         setTitle(fileName)
                         setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
                         setAllowedOverMetered(true)
                         setAllowedOverRoaming(true)
+                        setRequiresCharging(false)
+                        setRequiresDeviceIdle(false)
                         setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                         setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
                     }
