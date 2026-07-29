@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Opera x ColorOS 16 - Downloads</title>
+  
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+  <style>
+    /* DYNAMIC CSS VARIABLES
+      Allows seamless switching between Light and Dark modes
+    */
+    :root {
+      /* Light Theme Variables */
+      --bg-gradient: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%), 
+                     radial-gradient(circle at top right, #e2d1c3, transparent 40%),
+                     radial-gradient(circle at bottom left, #d4e4f9, transparent 40%);
+      --glass-bg: rgba(255, 255, 255, 0.65);
+      --glass-border: rgba(255, 255, 255, 0.5);
+      --glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.1);
+      --text-main: #1C1C1E;
+      --text-muted: #6E6E73;
+      --accent: #0066FF;
+      --success: #34C759;
+      --danger: #FF3B30;
+      
+      --drawer-bg: rgba(255, 255, 255, 0.8);
+      --item-bg: rgba(255, 255, 255, 0.4);
+      --item-border: rgba(255, 255, 255, 0.6);
+      --item-active: rgba(255, 255, 255, 0.8);
+    }
+
+    /* Dark Theme Variables */
+    body.dark-mode {
+      --bg-gradient: linear-gradient(135deg, #121214 0%, #1c1c1e 100%), 
+                     radial-gradient(circle at top right, #2a2a35, transparent 40%),
+                     radial-gradient(circle at bottom left, #1a202c, transparent 40%);
+      --glass-bg: rgba(30, 30, 35, 0.65);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+      --text-main: #F5F5F7;
+      --text-muted: #A1A1A6;
+      --accent: #4D94FF;
+      --success: #30D158;
+      --danger: #FF453A;
+      
+      --drawer-bg: rgba(40, 40, 45, 0.85);
+      --item-bg: rgba(255, 255, 255, 0.05);
+      --item-border: rgba(255, 255, 255, 0.1);
+      --item-active: rgba(255, 255, 255, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    body {
+      background: var(--bg-gradient);
+      background-blend-mode: multiply;
+      background-attachment: fixed;
+      min-height: 100vh;
+      color: var(--text-main);
+      overflow-x: hidden;
+    }
+
+    /* --- FLOATING TOP BAR --- */
+    .top-bar {
+      position: fixed;
+      top: 16px; left: 16px; right: 16px; height: 56px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+      border: 1.5px solid var(--glass-border);
+      border-radius: 28px;
+      box-shadow: var(--glass-shadow);
+      display: flex; align-items: center; padding: 0 16px;
+      z-index: 1000;
+    }
+    .search-icon, .mic-icon { color: var(--text-muted); font-size: 20px; }
+    .url-input {
+      flex: 1; border: none; background: transparent; outline: none;
+      padding: 0 12px; font-size: 16px; color: var(--text-main);
+    }
+    .url-input::placeholder { color: var(--text-muted); font-weight: 500; }
+
+    /* --- FLOATING BOTTOM BAR --- */
+    .bottom-bar {
+      position: fixed; bottom: 24px; left: 20px; right: 20px;
+      height: 68px; background: var(--glass-bg);
+      backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+      border: 1.5px solid var(--glass-border); border-radius: 34px;
+      box-shadow: var(--glass-shadow);
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0 24px; z-index: 1000;
+    }
+    .nav-btn {
+      background: transparent; border: none; color: var(--text-main);
+      font-size: 26px; display: flex; justify-content: center; align-items: center;
+      cursor: pointer; width: 48px; height: 48px; border-radius: 50%;
+      position: relative;
+    }
+    .tab-counter {
+      position: absolute; font-size: 11px; font-weight: 700;
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+    }
+    .nav-btn.primary { color: var(--accent); }
+
+    /* --- APP DRAWER OVERLAY & PANEL --- */
+    .overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.5); opacity: 0; pointer-events: none;
+      transition: opacity 0.3s ease; z-index: 1001; 
+    }
+    .overlay.active { opacity: 1; pointer-events: auto; }
+
+    .app-drawer {
+      position: fixed; bottom: 0; left: 0; right: 0; width: 100%;
+      background: var(--drawer-bg); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
+      border-top: 1px solid var(--glass-border); border-radius: 30px 30px 0 0;
+      box-shadow: 0 -10px 40px rgba(0,0,0,0.2); transform: translateY(100%);
+      transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1); z-index: 1002;
+      display: flex; flex-direction: column; padding: 24px 20px 40px 20px;
+    }
+    .app-drawer.active { transform: translateY(0); }
+
+    .drawer-pill { width: 40px; height: 5px; background: var(--text-muted); border-radius: 3px; margin: 0 auto 20px auto; opacity: 0.5; }
+    .drawer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .drawer-title { font-size: 22px; font-weight: 700; }
+    .close-btn {
+      background: var(--item-bg); border: none; width: 36px; height: 36px;
+      border-radius: 50%; display: flex; justify-content: center; align-items: center;
+      font-size: 20px; cursor: pointer; color: var(--text-main);
+    }
+
+    .drawer-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .drawer-item {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
+      padding: 16px; border-radius: 20px; text-decoration: none; color: var(--text-main); font-weight: 600; font-size: 15px;
+      background: var(--item-bg); border: 1px solid var(--item-border); transition: background 0.2s ease;
+    }
+    .drawer-item i { font-size: 24px; color: var(--accent); }
+    .drawer-item:active { background: var(--item-active); }
+
+    /* =========================================================
+       DOWNLOADS PAGE SPECIFIC STYLES
+       ========================================================= */
+    .content-area {
+      padding: 100px 20px 120px 20px; 
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center;
+      width: 100%; max-width: 600px; margin: 0 auto;
+    }
+
+    .page-header { width: 100%; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
+    .page-title { font-size: 28px; font-weight: 700; }
+    .page-action { color: var(--accent); font-weight: 600; font-size: 24px; cursor: pointer; display: flex; align-items: center;}
+
+    /* Sliding Navigation Tabs */
+    .dl-tabs-container {
+      width: 100%;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      padding: 4px;
+      display: flex;
+      position: relative;
+      margin-bottom: 24px;
+    }
+    
+    .dl-tab {
+      flex: 1; text-align: center; padding: 12px 0; font-size: 14px; font-weight: 600;
+      color: var(--text-muted); cursor: pointer; position: relative; z-index: 2;
+      transition: color 0.3s ease;
+    }
+    .dl-tab.active { color: var(--text-main); }
+    
+    .dl-tab-indicator {
+      position: absolute; top: 4px; bottom: 4px; width: calc(33.33% - 2.66px);
+      background: var(--item-bg); border: 1px solid var(--item-border);
+      border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      z-index: 1; transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    /* Tab Content Panes */
+    .dl-pane { width: 100%; display: none; animation: fadeSlideUp 0.3s ease forwards; }
+    .dl-pane.active { display: flex; flex-direction: column; gap: 12px; }
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Download List Cards */
+    .list-card {
+      background: var(--item-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--item-border); border-radius: 20px; padding: 16px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    .card-icon {
+      width: 48px; height: 48px; border-radius: 14px; display: flex; justify-content: center; align-items: center;
+      font-size: 24px; background: rgba(0, 102, 255, 0.1); color: var(--accent);
+    }
+    .card-icon.success { background: rgba(52, 199, 89, 0.1); color: var(--success); }
+    .card-icon.danger { background: rgba(255, 59, 48, 0.1); color: var(--danger); }
+    
+    .card-info { flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+    .card-title { font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-main); }
+    .card-desc { font-size: 13px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    
+    .card-action {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--glass-bg); border: 1px solid var(--glass-border);
+      display: flex; justify-content: center; align-items: center;
+      color: var(--text-main); cursor: pointer; font-size: 18px;
+    }
+    .card-action.text-btn { font-size: 13px; font-weight: 700; background: transparent; border: none; width: auto; }
+
+    /* Progress Bar (ColorOS Style) */
+    .dl-progress-wrapper {
+      width: 100%; height: 6px; background: rgba(0,0,0,0.05);
+      border-radius: 3px; margin-top: 6px; overflow: hidden;
+    }
+    body.dark-mode .dl-progress-wrapper { background: rgba(255,255,255,0.1); }
+    
+    .dl-progress-fill {
+      height: 100%; width: 0%; background: var(--success); border-radius: 3px;
+      transition: width 0.1s linear; /* Fast fluid transition */
+    }
+  </style>
+</head>
+<body>
+
+  <header class="top-bar">
+    <i class="ph ph-magnifying-glass search-icon"></i>
+    <input type="text" class="url-input" placeholder="Search downloads" autocomplete="off">
+    <i class="ph ph-microphone mic-icon"></i>
+  </header>
+
+  <main class="content-area">
+    
+    <div class="page-header">
+      <h2 class="page-title">Downloads</h2>
+      <span class="page-action"><i class="ph ph-dots-three-outline-vertical" style="color: var(--text-main);"></i></span>
+    </div>
+
+    <div class="dl-tabs-container">
+      <div class="dl-tab-indicator" id="dlIndicator"></div>
+      <div class="dl-tab active" onclick="switchDlTab(0)">All</div>
+      <div class="dl-tab" onclick="switchDlTab(1)">Ongoing</div>
+      <div class="dl-tab" onclick="switchDlTab(2)">Complete</div>
+    </div>
+
+    <div class="dl-pane active" id="pane-0">
+      <div class="list-card">
+        <div class="card-icon success"><i class="ph-fill ph-android-logo"></i></div>
+        <div class="card-info">
+          <span class="card-title">ColorOS_16_Beta.apk</span>
+          <span class="card-desc" class="dl-status">Downloading... <span class="dl-speed" style="color: var(--accent);">34 MB/s</span></span>
+          <div class="dl-progress-wrapper">
+            <div class="dl-progress-fill dl-bar"></div>
+          </div>
+        </div>
+        <div class="card-action text-btn dl-percent">0%</div>
+      </div>
+
+      <div class="list-card">
+        <div class="card-icon"><i class="ph-fill ph-image"></i></div>
+        <div class="card-info">
+          <span class="card-title">Aquamorphic_Wallpaper_4K.jpg</span>
+          <span class="card-desc">4.8 MB &bull; Yesterday</span>
+        </div>
+        <div class="card-action"><i class="ph ph-folder-open"></i></div>
+      </div>
+
+      <div class="list-card">
+        <div class="card-icon danger"><i class="ph-fill ph-file-pdf"></i></div>
+        <div class="card-info">
+          <span class="card-title">UI_Spec_Document.pdf</span>
+          <span class="card-desc">850 KB &bull; May 20</span>
+        </div>
+        <div class="card-action"><i class="ph ph-folder-open"></i></div>
+      </div>
+    </div>
+
+    <div class="dl-pane" id="pane-1">
+      <div class="list-card">
+        <div class="card-icon success"><i class="ph-fill ph-android-logo"></i></div>
+        <div class="card-info">
+          <span class="card-title">ColorOS_16_Beta.apk</span>
+          <span class="card-desc" class="dl-status">Downloading... <span class="dl-speed" style="color: var(--accent);">34 MB/s</span></span>
+          <div class="dl-progress-wrapper">
+            <div class="dl-progress-fill dl-bar"></div>
+          </div>
+        </div>
+        <div class="card-action text-btn dl-percent">0%</div>
+      </div>
+    </div>
+
+    <div class="dl-pane" id="pane-2">
+      <div class="list-card">
+        <div class="card-icon"><i class="ph-fill ph-image"></i></div>
+        <div class="card-info">
+          <span class="card-title">Aquamorphic_Wallpaper_4K.jpg</span>
+          <span class="card-desc">4.8 MB &bull; Yesterday</span>
+        </div>
+        <div class="card-action"><i class="ph ph-folder-open"></i></div>
+      </div>
+      <div class="list-card">
+        <div class="card-icon danger"><i class="ph-fill ph-file-pdf"></i></div>
+        <div class="card-info">
+          <span class="card-title">UI_Spec_Document.pdf</span>
+          <span class="card-desc">850 KB &bull; May 20</span>
+        </div>
+        <div class="card-action"><i class="ph ph-folder-open"></i></div>
+      </div>
+    </div>
+
+  </main>
+
+  <nav class="bottom-bar">
+    <button class="nav-btn"><i class="ph ph-caret-left"></i></button>
+    <button class="nav-btn"><i class="ph ph-caret-right"></i></button>
+    <button class="nav-btn"><i class="ph-fill ph-house"></i></button>
+    <button class="nav-btn"><i class="ph ph-square"></i><span class="tab-counter">3</span></button>
+    <button class="nav-btn primary" id="menuBtn"><i class="ph ph-list"></i></button>
+  </nav>
+
+  <div class="overlay" id="overlay"></div>
+  <aside class="app-drawer" id="appDrawer">
+    <div class="drawer-pill"></div> 
+    
+    <div class="drawer-header">
+      <span class="drawer-title">Menu</span>
+      <button class="close-btn" id="closeBtn"><i class="ph ph-x"></i></button>
+    </div>
+    
+    <div class="drawer-menu">
+      <a href="#" class="drawer-item"><i class="ph ph-bookmark"></i> Bookmarks</a>
+      <a href="#" class="drawer-item"><i class="ph ph-clock-counter-clockwise"></i> History</a>
+      <a href="#" class="drawer-item" style="border-color: var(--accent);"><i class="ph ph-download-simple"></i> Downloads</a>
+      
+      <a href="#" class="drawer-item" id="darkModeToggle">
+        <i class="ph ph-moon" id="themeIcon"></i> 
+        <span id="themeText">Dark Mode</span>
+      </a>
+      
+      <a href="#" class="drawer-item" style="grid-column: span 2; flex-direction: row;"><i class="ph ph-gear"></i> Browser Settings</a>
+    </div>
+  </aside>
+
+  <script>
+    // System dark mode detection
+    function updateTheme() {
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.body.classList.add('dark-mode');
+            themeIcon.className = 'ph ph-sun';
+            themeText.innerText = 'Light Mode';
+        } else {
+            document.body.classList.remove('dark-mode');
+            themeIcon.className = 'ph ph-moon';
+            themeText.innerText = 'Dark Mode';
+        }
+        updateStatusBarColor();
+    }
+    
+    // Notify Android wrapper about color change to sync status bar
+    function updateStatusBarColor() {
+        const isDark = document.body.classList.contains('dark-mode');
+        // color matches top gradient approx
+        const hexColor = isDark ? "#121214" : "#fdfbfb"; 
+        const metaThemeColor = document.querySelector("meta[name=theme-color]");
+        if(metaThemeColor) {
+            metaThemeColor.setAttribute("content", hexColor);
+        } else {
+            const meta = document.createElement('meta');
+            meta.name = "theme-color";
+            meta.content = hexColor;
+            document.getElementsByTagName('head')[0].appendChild(meta);
+        }
+    }
+    
+    // Listen for system theme changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateTheme);
+    
+    // Initialize theme based on system preference
+    updateTheme();
+
+    // --- DRAWER & THEME LOGIC (From base code) ---
+    const menuBtn = document.getElementById('menuBtn');
+    const closeBtn = document.getElementById('closeBtn');
+    const appDrawer = document.getElementById('appDrawer');
+    const overlay = document.getElementById('overlay');
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    const themeIcon = document.getElementById('themeIcon');
+    const themeText = document.getElementById('themeText');
+
+    function toggleDrawer() {
+      appDrawer.classList.toggle('active');
+      overlay.classList.toggle('active');
+    }
+
+    function toggleTheme(e) {
+      e.preventDefault(); 
+      document.body.classList.toggle('dark-mode');
+      if (document.body.classList.contains('dark-mode')) {
+        themeIcon.className = 'ph ph-sun';
+        themeText.innerText = 'Light Mode';
+      } else {
+        themeIcon.className = 'ph ph-moon';
+        themeText.innerText = 'Dark Mode';
+      }
+      updateStatusBarColor();
+    }
+
+    menuBtn.addEventListener('click', toggleDrawer);
+    closeBtn.addEventListener('click', toggleDrawer);
+    overlay.addEventListener('click', toggleDrawer);
+    darkModeToggle.addEventListener('click', toggleTheme);
+
+    // --- DOWNLOADS PAGE LOGIC ---
+    
+    // 1. Tab Switching Logic
+    function switchDlTab(index) {
+      const tabs = document.querySelectorAll('.dl-tab');
+      const panes = document.querySelectorAll('.dl-pane');
+      const indicator = document.getElementById('dlIndicator');
+
+      // Update text color
+      tabs.forEach((tab, i) => {
+        if (i === index) tab.classList.add('active');
+        else tab.classList.remove('active');
+      });
+
+      // Slide indicator pill (100% of its own width * index)
+      indicator.style.transform = `translateX(${index * 100}%)`;
+
+      // Show/Hide Panes
+      panes.forEach((pane, i) => {
+        if (i === index) pane.classList.add('active');
+        else pane.classList.remove('active');
+      });
+    }
+
+    // 2. High-Speed Download Simulation
+    let progress = 0;
+    // We update both identical elements (one in "All" pane, one in "Ongoing" pane)
+    const dlBars = document.querySelectorAll('.dl-bar');
+    const dlPercents = document.querySelectorAll('.dl-percent');
+    const dlStatuses = document.querySelectorAll('.dl-status');
+    const dlWrappers = document.querySelectorAll('.dl-progress-wrapper');
+
+    function simulateFastDownload() {
+      // Jumps between 5% and 15% per tick for rapid feeling
+      progress += Math.random() * 10 + 5; 
+
+      if (progress >= 100) {
+        progress = 100;
+        
+        // Finalize state
+        dlBars.forEach(bar => bar.style.width = '100%');
+        
+        // Change text button to an open folder icon
+        dlPercents.forEach(p => {
+          p.classList.remove('text-btn');
+          p.innerHTML = '<i class="ph ph-folder-open" style="font-size: 18px;"></i>';
+        });
+        
+        // Update status text
+        dlStatuses.forEach(status => {
+          status.innerHTML = '1.2 GB &bull; Completed';
+        });
+        
+        // Hide progress bars smoothly after a slight delay
+        setTimeout(() => {
+          dlWrappers.forEach(w => w.style.display = 'none');
+        }, 600);
+
+        return; // Stop loop
+      }
+
+      // Update ongoing state
+      const currentPercent = Math.floor(progress) + '%';
+      
+      dlBars.forEach(bar => bar.style.width = currentPercent);
+      dlPercents.forEach(p => p.innerText = currentPercent);
+
+      // Recursive call for animation loop (fast 150ms intervals)
+      setTimeout(simulateFastDownload, 150);
+    }
+
+    // Start simulation immediately on load
+    simulateFastDownload();
+  </script>
+
+</body>
+</html>
