@@ -1,9 +1,0 @@
-with open('app/src/main/java/com/example/ui/AICommandHandler.kt', 'r') as f:
-    content = f.read()
-
-import re
-# We need to replace the bad string replacements
-content = re.sub(r'arg\.replace\(".*?\)', 'arg.replace("\\\'", "\\\\\\\'").replace("\\"", "\\\\\\\"")', content)
-
-with open('app/src/main/java/com/example/ui/AICommandHandler.kt', 'w') as f:
-    f.write(content)
