@@ -8,7 +8,7 @@ A premium, privacy-focused minimalist web browser built with Kotlin and Jetpack 
 - **Voice Assistant**: Integrated intelligent voice commands for hands-free browsing, scrolling, and searching.
 - **Adaptive Layout**: Fully responsive design supporting phones, foldables, and tablets.
 - **Smart Tabs**: Elegant tab management and quick switching.
-- **Privacy First**: Secure lookup integrated with Search (https://search.stormx.ninja/).
+- **Privacy First**: Secure lookup integrated with Search (https://s.stormate.tech/).
 
 ## 🚀 GitHub Actions CI/CD (Auto-Release APK)
 
